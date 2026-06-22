@@ -1093,6 +1093,7 @@ function navigatePrimaryTab(target) {
   } else if (target === "subscriptions") {
     setScreen("subscriptions");
   } else if (target === "account") {
+    if (BACKEND_DISABLED) return;
     if (state.user) {
       showAccountPanel();
     } else {
@@ -1165,6 +1166,7 @@ function setScreen(name) {
     bottomVocab.classList.toggle("active", name === "vocab");
     bottomSubscriptions.classList.toggle("active", name === "subscriptions");
     bottomAccount.classList.remove("active");
+    bottomAccount.classList.toggle("hidden", BACKEND_DISABLED);
   }
 }
 
@@ -1226,7 +1228,7 @@ function renderChrome() {
     bottomAccountBtn.querySelector(".mobile-bottom-nav-label").textContent = isVi ? "Cá nhân" : "个人";
   }
 
-  const canViewAdmin = isAdminUser();
+  const canViewAdmin = !BACKEND_DISABLED && isAdminUser();
   if (navAdmin) {
     navAdmin.textContent = t("admin");
     navAdmin.classList.toggle("hidden", !canViewAdmin);
@@ -1237,8 +1239,13 @@ function renderChrome() {
   }
   const menuToggleBtn = $("#menuToggleBtn");
   if (menuToggleBtn) {
-    menuToggleBtn.classList.toggle("hidden", !canViewAdmin);
+    menuToggleBtn.classList.toggle("hidden", BACKEND_DISABLED || !canViewAdmin);
   }
+  [loginBtn, registerBtn, mobileLoginBtn, mobileRegisterBtn, sidebarLoginBtn, sidebarRegisterBtn].forEach((button) => {
+    if (!button) return;
+    button.classList.toggle("hidden", BACKEND_DISABLED);
+  });
+  if (BACKEND_DISABLED) return;
   if (state.user) {
     if (loginBtn) loginBtn.textContent = state.user.fullName || t("account");
     if (registerBtn) registerBtn.textContent = t("logout");
