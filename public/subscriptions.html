@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quản lý gói đăng ký</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="subscriptions.css" />
+</head>
+
+<body>
+  <main class="subscription-page">
+    <header class="subscription-hero">
+      <div>
+        <h1>Quản lý gói đăng ký</h1>
+        <p>Theo dõi doanh thu và tối ưu hóa các gói học tập của LingoBloom.</p>
+      </div>
+      <button class="primary-action" id="addPlanBtn" type="button">
+        <span aria-hidden="true">+</span>
+        Thêm gói mới
+      </button>
+    </header>
+
+    <section class="metric-grid" aria-label="Chỉ số tổng quan">
+      <article class="metric-card">
+        <span class="metric-icon icon-wallet" aria-hidden="true">VN</span>
+        <div>
+          <p>Tổng doanh thu</p>
+          <strong>2,450,000,000</strong>
+          <span>VNĐ</span>
+          <small>+12.5% tháng này</small>
+        </div>
+      </article>
+      <article class="metric-card">
+        <span class="metric-icon icon-users" aria-hidden="true">U</span>
+        <div>
+          <p>Gói đang hoạt động</p>
+          <strong>15,820 <em>Users</em></strong>
+          <small>Dự kiến tăng 5% tuần tới</small>
+        </div>
+      </article>
+      <article class="metric-card">
+        <span class="metric-icon icon-renew" aria-hidden="true">R</span>
+        <div>
+          <p>Tỷ lệ gia hạn</p>
+          <strong>78.4%</strong>
+          <small class="stable">Đang ở mức ổn định</small>
+        </div>
+      </article>
+    </section>
+
+    <section class="dashboard-grid">
+      <article class="panel plans-panel">
+        <div class="panel-heading">
+          <div class="panel-title">
+            <span class="title-icon" aria-hidden="true">□</span>
+            <h2>Danh sách gói dịch vụ</h2>
+          </div>
+          <button class="text-action" type="button">Xem tất cả</button>
+        </div>
+
+        <div class="plan-table" role="table" aria-label="Danh sách gói dịch vụ">
+          <div class="plan-row plan-head" role="row">
+            <span role="columnheader">Tên gói</span>
+            <span role="columnheader">Giá (VNĐ)</span>
+            <span role="columnheader">Người mua</span>
+            <span role="columnheader">Trạng thái</span>
+            <span role="columnheader">Thao tác</span>
+          </div>
+          <div class="plan-row" role="row">
+            <span class="plan-name" role="cell"><i>1M</i>Gói 1 Tháng</span>
+            <span role="cell">199.000</span>
+            <span role="cell">4,201</span>
+            <span role="cell"><mark>Đang bán</mark></span>
+            <span role="cell"><button class="icon-action" type="button" aria-label="Sửa gói 1 tháng">✎</button></span>
+          </div>
+          <div class="plan-row" role="row">
+            <span class="plan-name" role="cell"><i>3M</i>Gói 3 Tháng</span>
+            <span role="cell">499.000</span>
+            <span role="cell">8,542</span>
+            <span role="cell"><mark>Đang bán</mark></span>
+            <span role="cell"><button class="icon-action" type="button" aria-label="Sửa gói 3 tháng">✎</button></span>
+          </div>
+          <div class="plan-row" role="row">
+            <span class="plan-name" role="cell"><i>6M</i>Gói 6 Tháng</span>
+            <span role="cell">899.000</span>
+            <span role="cell">3,077</span>
+            <span role="cell"><mark>Đang bán</mark></span>
+            <span role="cell"><button class="icon-action" type="button" aria-label="Sửa gói 6 tháng">✎</button></span>
+          </div>
+        </div>
+      </article>
+
+      <aside class="panel transaction-panel">
+        <div class="panel-heading">
+          <div class="panel-title">
+            <span class="title-icon" aria-hidden="true">↺</span>
+            <h2>Giao dịch gần đây</h2>
+          </div>
+          <span class="today-badge">Hôm nay</span>
+        </div>
+
+        <div class="transaction-list">
+          <article class="transaction-item">
+            <img src="assets/review_user_1.png" alt="Nguyễn Minh Quân" />
+            <div>
+              <strong>Nguyễn Minh Quân</strong>
+              <span>Gói 3 Tháng - 14:20</span>
+            </div>
+            <p>+499,000đ <small>MOMO</small></p>
+          </article>
+          <article class="transaction-item">
+            <img src="assets/review_user_2.png" alt="Lê Thị Mai Anh" />
+            <div>
+              <strong>Lê Thị Mai Anh</strong>
+              <span>Gói 1 Tháng - 12:45</span>
+            </div>
+            <p>+199,000đ <small>VNPAY</small></p>
+          </article>
+          <article class="transaction-item">
+            <img src="assets/review_user_3.png" alt="Trần Hoàng Nam" />
+            <div>
+              <strong>Trần Hoàng Nam</strong>
+              <span>Gói 6 Tháng - 10:15</span>
+            </div>
+            <p>+899,000đ <small>Thẻ tín dụng</small></p>
+          </article>
+          <article class="transaction-item">
+            <img src="assets/huamei-logo.png" alt="Phạm Thảo Vy" />
+            <div>
+              <strong>Phạm Thảo Vy</strong>
+              <span>Gói 1 Tháng - 09:30</span>
+            </div>
+            <p>+199,000đ <small>MOMO</small></p>
+          </article>
+        </div>
+
+        <button class="download-action" id="downloadCsvBtn" type="button">
+          Tải báo cáo giao dịch (CSV)
+          <span aria-hidden="true">↓</span>
+        </button>
+      </aside>
+    </section>
+  </main>
+
+  <dialog class="plan-dialog" id="planDialog" aria-labelledby="planDialogTitle">
+    <form method="dialog">
+      <div class="dialog-heading">
+        <h2 id="planDialogTitle">Thêm gói mới</h2>
+        <button class="dialog-close" value="cancel" type="submit" aria-label="Đóng">×</button>
+      </div>
+      <label>
+        Tên gói
+        <input value="Gói 12 Tháng" />
+      </label>
+      <label>
+        Giá bán
+        <input value="1,499,000đ" />
+      </label>
+      <label>
+        Trạng thái
+        <select>
+          <option>Đang bán</option>
+          <option>Tạm ẩn</option>
+        </select>
+      </label>
+      <button class="primary-action dialog-submit" value="default" type="submit">Lưu gói</button>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="subscriptions.js"></script>
+</body>
+
+</html>
