@@ -878,7 +878,8 @@ function escapeAttr(value) {
     .replace(/>/g, "&gt;");
 }
 
-const BACKEND_DISABLED = false;
+const BACKEND_DISABLED = true;
+const BACKEND_DISABLED_MESSAGE = "Bản Netlify hiện chỉ chạy nội dung học tĩnh, chưa bật đăng nhập.";
 
 const UPGRADE_PLAN_IDS = {
   "1 Tháng": "1m",
@@ -888,7 +889,7 @@ const UPGRADE_PLAN_IDS = {
 
 async function apiRequest(path, options = {}) {
   if (BACKEND_DISABLED && path.startsWith("/api/")) {
-    throw new Error("Backend đã bị vô hiệu hóa.");
+    throw new Error(BACKEND_DISABLED_MESSAGE);
   }
 
   const response = await fetch(path, {
@@ -1639,6 +1640,10 @@ function renderAdmin() {
 }
 
 function showModal(type) {
+  if (BACKEND_DISABLED) {
+    showToast(BACKEND_DISABLED_MESSAGE);
+    return;
+  }
   const modalDiv = document.createElement("div");
   modalDiv.id = "authModal";
   modalDiv.className = "auth-modal-overlay";
@@ -3820,6 +3825,11 @@ function bindEvents() {
     }
     const mobileAdminBtn = event.target.closest("#mobileAdminBtn");
     if (mobileAdminBtn) {
+      if (BACKEND_DISABLED) {
+        showToast(BACKEND_DISABLED_MESSAGE);
+        $("#mobileMenu")?.classList.remove("active");
+        return;
+      }
       state.fromRoadmap = false;
       renderAdmin();
       setScreen("admin");
@@ -3828,6 +3838,11 @@ function bindEvents() {
     }
     const loginBtn = event.target.closest("#loginBtn") || event.target.closest("#mobileLoginBtn") || event.target.closest("#sidebarLoginBtn");
     if (loginBtn) {
+      if (BACKEND_DISABLED) {
+        showToast(BACKEND_DISABLED_MESSAGE);
+        $("#mobileMenu")?.classList.remove("active");
+        return;
+      }
       if (!state.user) {
         showModal("login");
       } else {
@@ -3838,6 +3853,11 @@ function bindEvents() {
     }
     const registerBtn = event.target.closest("#registerBtn") || event.target.closest("#mobileRegisterBtn") || event.target.closest("#sidebarRegisterBtn");
     if (registerBtn) {
+      if (BACKEND_DISABLED) {
+        showToast(BACKEND_DISABLED_MESSAGE);
+        $("#mobileMenu")?.classList.remove("active");
+        return;
+      }
       if (state.user) {
         state.user = null;
         saveState();
@@ -3890,6 +3910,10 @@ function bindEvents() {
     }
     const navAdminBtn = event.target.closest("#navAdminBtn");
     if (navAdminBtn) {
+      if (BACKEND_DISABLED) {
+        showToast(BACKEND_DISABLED_MESSAGE);
+        return;
+      }
       state.fromRoadmap = false;
       renderAdmin();
       setScreen("admin");
