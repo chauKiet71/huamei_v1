@@ -878,7 +878,7 @@ function escapeAttr(value) {
     .replace(/>/g, "&gt;");
 }
 
-const BACKEND_DISABLED = true;
+const BACKEND_DISABLED = false;
 const BACKEND_DISABLED_MESSAGE = "Bản Netlify hiện chỉ chạy nội dung học tĩnh, chưa bật đăng nhập.";
 
 const UPGRADE_PLAN_IDS = {
