@@ -10,7 +10,7 @@ export const PAYMENT_PLANS: Record<string, PaymentPlan> = {
   '1m': {
     id: '1m',
     months: 1,
-    amount: 149000,
+    amount: 19000,
     nameVi: '1 Tháng',
     nameZh: '1 个月',
   },
