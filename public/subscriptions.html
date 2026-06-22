@@ -30,26 +30,26 @@
       <article class="metric-card">
         <span class="metric-icon icon-wallet" aria-hidden="true">VN</span>
         <div>
-          <p>Tổng doanh thu</p>
-          <strong>2,450,000,000</strong>
-          <span>VNĐ</span>
-          <small>+12.5% tháng này</small>
+          <p>Tổng gói</p>
+          <strong id="totalPlansMetric">—</strong>
+          <span>gói</span>
+          <small>Quản lý trực tiếp trên hệ thống</small>
         </div>
       </article>
       <article class="metric-card">
         <span class="metric-icon icon-users" aria-hidden="true">U</span>
         <div>
           <p>Gói đang hoạt động</p>
-          <strong>15,820 <em>Users</em></strong>
-          <small>Dự kiến tăng 5% tuần tới</small>
+          <strong><span id="activePlansMetric">—</span> <em>Plans</em></strong>
+          <small>Hiển thị cho người dùng khi đang bán</small>
         </div>
       </article>
       <article class="metric-card">
         <span class="metric-icon icon-renew" aria-hidden="true">R</span>
         <div>
-          <p>Tỷ lệ gia hạn</p>
-          <strong>78.4%</strong>
-          <small class="stable">Đang ở mức ổn định</small>
+          <p>Thao tác</p>
+          <strong>CRUD</strong>
+          <small class="stable">Thêm, sửa, xóa gói đăng ký</small>
         </div>
       </article>
     </section>
@@ -61,7 +61,7 @@
             <span class="title-icon" aria-hidden="true">□</span>
             <h2>Danh sách gói dịch vụ</h2>
           </div>
-          <button class="text-action" type="button">Xem tất cả</button>
+          <button class="text-action" id="downloadCsvBtn" type="button">Tải CSV</button>
         </div>
 
         <div class="plan-table" role="table" aria-label="Danh sách gói dịch vụ">
@@ -72,27 +72,7 @@
             <span role="columnheader">Trạng thái</span>
             <span role="columnheader">Thao tác</span>
           </div>
-          <div class="plan-row" role="row">
-            <span class="plan-name" role="cell"><i>1M</i>Gói 1 Tháng</span>
-            <span role="cell">199.000</span>
-            <span role="cell">4,201</span>
-            <span role="cell"><mark>Đang bán</mark></span>
-            <span role="cell"><button class="icon-action" type="button" aria-label="Sửa gói 1 tháng">✎</button></span>
-          </div>
-          <div class="plan-row" role="row">
-            <span class="plan-name" role="cell"><i>3M</i>Gói 3 Tháng</span>
-            <span role="cell">499.000</span>
-            <span role="cell">8,542</span>
-            <span role="cell"><mark>Đang bán</mark></span>
-            <span role="cell"><button class="icon-action" type="button" aria-label="Sửa gói 3 tháng">✎</button></span>
-          </div>
-          <div class="plan-row" role="row">
-            <span class="plan-name" role="cell"><i>6M</i>Gói 6 Tháng</span>
-            <span role="cell">899.000</span>
-            <span role="cell">3,077</span>
-            <span role="cell"><mark>Đang bán</mark></span>
-            <span role="cell"><button class="icon-action" type="button" aria-label="Sửa gói 6 tháng">✎</button></span>
-          </div>
+          <div id="planTableBody"></div>
         </div>
       </article>
 
@@ -100,76 +80,78 @@
         <div class="panel-heading">
           <div class="panel-title">
             <span class="title-icon" aria-hidden="true">↺</span>
-            <h2>Giao dịch gần đây</h2>
+            <h2>Hướng dẫn</h2>
           </div>
-          <span class="today-badge">Hôm nay</span>
         </div>
 
-        <div class="transaction-list">
+        <div class="transaction-list plan-guide">
           <article class="transaction-item">
-            <img src="assets/review_user_1.png" alt="Nguyễn Minh Quân" />
             <div>
-              <strong>Nguyễn Minh Quân</strong>
-              <span>Gói 3 Tháng - 14:20</span>
+              <strong>Thêm gói mới</strong>
+              <span>Nhấn nút "Thêm gói mới" và điền mã, tên, số tháng, giá.</span>
             </div>
-            <p>+499,000đ <small>MOMO</small></p>
           </article>
           <article class="transaction-item">
-            <img src="assets/review_user_2.png" alt="Lê Thị Mai Anh" />
             <div>
-              <strong>Lê Thị Mai Anh</strong>
-              <span>Gói 1 Tháng - 12:45</span>
+              <strong>Chỉnh sửa</strong>
+              <span>Nhấn biểu tượng bút chì để cập nhật thông tin gói.</span>
             </div>
-            <p>+199,000đ <small>VNPAY</small></p>
           </article>
           <article class="transaction-item">
-            <img src="assets/review_user_3.png" alt="Trần Hoàng Nam" />
             <div>
-              <strong>Trần Hoàng Nam</strong>
-              <span>Gói 6 Tháng - 10:15</span>
+              <strong>Xóa gói</strong>
+              <span>Chỉ xóa được gói chưa có giao dịch thanh toán.</span>
             </div>
-            <p>+899,000đ <small>Thẻ tín dụng</small></p>
           </article>
           <article class="transaction-item">
-            <img src="assets/huamei-logo.png" alt="Phạm Thảo Vy" />
             <div>
-              <strong>Phạm Thảo Vy</strong>
-              <span>Gói 1 Tháng - 09:30</span>
+              <strong>Tạm ẩn</strong>
+              <span>Chuyển trạng thái sang "Tạm ẩn" để ngừng bán mà không xóa.</span>
             </div>
-            <p>+199,000đ <small>MOMO</small></p>
           </article>
         </div>
-
-        <button class="download-action" id="downloadCsvBtn" type="button">
-          Tải báo cáo giao dịch (CSV)
-          <span aria-hidden="true">↓</span>
-        </button>
       </aside>
     </section>
   </main>
 
   <dialog class="plan-dialog" id="planDialog" aria-labelledby="planDialogTitle">
-    <form method="dialog">
+    <form id="planDialogForm" method="dialog">
       <div class="dialog-heading">
         <h2 id="planDialogTitle">Thêm gói mới</h2>
-        <button class="dialog-close" value="cancel" type="submit" aria-label="Đóng">×</button>
+        <button class="dialog-close" value="cancel" type="button" aria-label="Đóng">×</button>
       </div>
       <label>
-        Tên gói
-        <input value="Gói 12 Tháng" />
+        Mã gói
+        <input id="planIdInput" placeholder="vd: 12m" required pattern="[a-z0-9_-]{2,20}" />
       </label>
       <label>
-        Giá bán
-        <input value="1,499,000đ" />
+        Tên gói (Tiếng Việt)
+        <input id="planNameViInput" placeholder="Gói 12 Tháng" required />
+      </label>
+      <label>
+        Tên gói (Tiếng Trung)
+        <input id="planNameZhInput" placeholder="12 个月" required />
+      </label>
+      <label>
+        Số tháng
+        <input id="planMonthsInput" type="number" min="1" step="1" placeholder="12" required />
+      </label>
+      <label>
+        Giá bán (VNĐ)
+        <input id="planAmountInput" inputmode="numeric" placeholder="1.499.000" required />
+      </label>
+      <label>
+        Thứ tự hiển thị
+        <input id="planSortInput" type="number" min="0" step="1" value="1" />
       </label>
       <label>
         Trạng thái
-        <select>
-          <option>Đang bán</option>
-          <option>Tạm ẩn</option>
+        <select id="planStatusSelect">
+          <option value="active">Đang bán</option>
+          <option value="hidden">Tạm ẩn</option>
         </select>
       </label>
-      <button class="primary-action dialog-submit" value="default" type="submit">Lưu gói</button>
+      <button class="primary-action dialog-submit" type="submit">Lưu gói</button>
     </form>
   </dialog>
 

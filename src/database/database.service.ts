@@ -101,5 +101,26 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS payment_plans (
+        id TEXT PRIMARY KEY,
+        months INTEGER NOT NULL,
+        amount INTEGER NOT NULL,
+        name_vi TEXT NOT NULL,
+        name_zh TEXT NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await this.pool.query(`
+      INSERT INTO payment_plans (id, months, amount, name_vi, name_zh, is_active, sort_order)
+      VALUES
+        ('1m', 1, 149000, '1 Tháng', '1 个月', TRUE, 1),
+        ('3m', 3, 399000, '3 Tháng', '3 个月', TRUE, 2),
+        ('6m', 6, 699000, '6 Tháng', '6 个月', TRUE, 3)
+      ON CONFLICT (id) DO NOTHING;
+    `);
   }
 }

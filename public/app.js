@@ -431,6 +431,7 @@ const state = {
   adminUsers: [],
   adminStatus: "",
   adminTab: "users",
+  paymentPlans: [],
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -881,11 +882,63 @@ function escapeAttr(value) {
 const BACKEND_DISABLED = false;
 const BACKEND_DISABLED_MESSAGE = "Bản Netlify hiện chỉ chạy nội dung học tĩnh, chưa bật đăng nhập.";
 
-const UPGRADE_PLAN_IDS = {
-  "1 Tháng": "1m",
-  "3 Tháng": "3m",
-  "6 Tháng": "6m",
-};
+function formatPlanPrice(amount) {
+  return `${Number(amount || 0).toLocaleString("vi-VN")}đ`;
+}
+
+function buildDisplayPlans(apiPlans, isVi) {
+  const sorted = [...(apiPlans || [])].sort((a, b) => {
+    if (a.sortOrder !== b.sortOrder) return (a.sortOrder || 0) - (b.sortOrder || 0);
+    return a.months - b.months;
+  });
+  if (!sorted.length) return [];
+
+  const baseMonthly = sorted[0].amount / sorted[0].months;
+  const popularIndex = sorted.length >= 3 ? 1 : sorted.length === 2 ? 1 : 0;
+
+  return sorted.map((plan, index) => {
+    const monthly = Math.round(plan.amount / plan.months);
+    const savings = plan.months === sorted[0].months
+      ? 0
+      : Math.max(0, Math.round((1 - plan.amount / (baseMonthly * plan.months)) * 100));
+
+    let kickerVi;
+    let kickerZh;
+    if (plan.months === sorted[0].months) {
+      kickerVi = "Gói cơ bản";
+      kickerZh = "基础套餐";
+    } else if (savings > 0) {
+      kickerVi = `Tiết kiệm ${savings}%`;
+      kickerZh = `节省 ${savings}%`;
+    } else {
+      kickerVi = plan.nameVi;
+      kickerZh = plan.nameZh;
+    }
+
+    const note = plan.months === 1
+      ? (isVi ? "/tháng" : "/月")
+      : (isVi ? `Chỉ ~${Math.round(monthly / 1000)}k / tháng` : `仅 ~${Math.round(monthly / 1000)}k / 月`);
+
+    return {
+      id: plan.id,
+      nameVi: kickerVi,
+      nameZh: kickerZh,
+      durationVi: plan.nameVi,
+      durationZh: plan.nameZh,
+      price: plan.priceLabel || formatPlanPrice(plan.amount),
+      note,
+      discount: index === popularIndex && sorted.length > 1 ? (isVi ? "Phổ biến nhất" : "最受欢迎") : "",
+      popular: index === popularIndex && sorted.length > 1,
+    };
+  });
+}
+
+async function loadPaymentPlans() {
+  if (BACKEND_DISABLED) return [];
+  const data = await apiRequest("/api/payments/plans");
+  state.paymentPlans = data.plans || [];
+  return state.paymentPlans;
+}
 
 async function apiRequest(path, options = {}) {
   if (BACKEND_DISABLED && path.startsWith("/api/")) {
@@ -926,6 +979,73 @@ function formatAdminDate(value) {
     month: "2-digit",
     year: "numeric",
   }).format(date);
+}
+
+function formatPremiumExpiry(value, isVi) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat(isVi ? "vi-VN" : "zh-CN", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
+function showUpgradeSuccessModal({ planLabel, premiumUntil }) {
+  const isVi = state.lang === "vi";
+  const existing = document.getElementById("upgradeSuccessModal");
+  if (existing) existing.remove();
+
+  const modalDiv = document.createElement("div");
+  modalDiv.id = "upgradeSuccessModal";
+  modalDiv.className = "upgrade-success-overlay";
+  modalDiv.innerHTML = `
+    <div class="upgrade-success-modal">
+      <div class="upgrade-success-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
+      </div>
+      <h2>${isVi ? "Nâng cấp thành công!" : "升级成功！"}</h2>
+      <p class="upgrade-success-subtitle">${isVi
+    ? "Chào mừng bạn đến với gói Pro. Toàn bộ tính năng cao cấp đã được mở khóa."
+    : "欢迎加入 Pro 套餐，全部高级功能已解锁。"}</p>
+      <div class="upgrade-success-details">
+        <div class="upgrade-success-row">
+          <span>${isVi ? "GÓI ĐĂNG KÝ" : "订阅套餐"}</span>
+          <strong>${escapeAttr(planLabel)}</strong>
+        </div>
+        <div class="upgrade-success-row">
+          <span>${isVi ? "NGÀY HẾT HẠN" : "到期日期"}</span>
+          <strong>
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <path d="M16 2v4" />
+              <path d="M8 2v4" />
+              <path d="M3 10h18" />
+            </svg>
+            ${escapeAttr(formatPremiumExpiry(premiumUntil, isVi))}
+          </strong>
+        </div>
+      </div>
+      <button class="upgrade-success-action" id="upgradeSuccessStartBtn" type="button">
+        ${isVi ? "Bắt đầu học ngay" : "立即开始学习"}
+        <span aria-hidden="true">→</span>
+      </button>
+    </div>
+  `;
+
+  document.body.appendChild(modalDiv);
+  const closeModal = () => modalDiv.remove();
+  modalDiv.querySelector("#upgradeSuccessStartBtn").onclick = () => {
+    closeModal();
+    renderChrome();
+    setScreen("home");
+  };
+  modalDiv.onclick = (event) => {
+    if (event.target === modalDiv) closeModal();
+  };
 }
 
 function isActivePremiumUser(user) {
@@ -1877,38 +1997,6 @@ function showUpgradePlansModal() {
   const existing = document.getElementById("upgradePlansModal");
   if (existing) existing.remove();
 
-  const plans = [
-    {
-      nameVi: "Gói cơ bản",
-      nameZh: "基础套餐",
-      durationVi: "1 Tháng",
-      durationZh: "1 个月",
-      price: "149.000đ",
-      note: "/tháng",
-      discount: "",
-      popular: false,
-    },
-    {
-      nameVi: "Tiết kiệm 10%",
-      nameZh: "节省 10%",
-      durationVi: "3 Tháng",
-      durationZh: "3 个月",
-      price: "399.000đ",
-      note: "Chỉ ~133k / tháng",
-      discount: "Phổ biến nhất",
-      popular: true,
-    },
-    {
-      nameVi: "Tiết kiệm 20%",
-      nameZh: "节省 20%",
-      durationVi: "6 Tháng",
-      durationZh: "6 个月",
-      price: "699.000đ",
-      note: "Chỉ ~116k / tháng",
-      discount: "",
-      popular: false,
-    },
-  ];
   const benefits = isVi
     ? [
       "Truy cập tất cả khóa học HSK 1-6",
@@ -1938,54 +2026,8 @@ function showUpgradePlansModal() {
         <p>${isVi ? "Mở khóa toàn bộ tính năng và lộ trình học tập chuyên sâu để làm chủ tiếng Trung nhanh hơn." : "解锁全部功能和深度学习路线，更快掌握中文。"}</p>
       </div>
       <div class="upgrade-plans-grid">
-        ${plans.map((plan) => `
-          <article class="upgrade-plan-card ${plan.popular ? "popular" : ""}" data-upgrade-plan-card="${escapeAttr(plan.durationVi)}" role="button" tabindex="0">
-            ${plan.discount ? `<div class="upgrade-popular-badge">${isVi ? plan.discount : "最受欢迎"}</div>` : ""}
-            <div class="upgrade-plan-kicker">${isVi ? plan.nameVi : plan.nameZh}</div>
-            <h3>${isVi ? plan.durationVi : plan.durationZh}</h3>
-            <div class="upgrade-plan-price">
-              <strong>${plan.price}</strong>
-              ${!plan.popular ? `<span>${plan.note}</span>` : ""}
-            </div>
-            ${plan.popular ? `<p class="upgrade-plan-note">${plan.note}</p>` : ""}
-            <ul>
-              ${benefits.map((benefit) => `
-                <li>
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                    <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-1.1 13.7-3.6-3.6 1.4-1.4 2.2 2.2 4.8-4.8 1.4 1.4-6.2 6.2z" />
-                  </svg>
-                  ${benefit}
-                </li>
-              `).join("")}
-            </ul>
-            <button class="upgrade-plan-action" type="button" data-upgrade-plan="${escapeAttr(plan.durationVi)}">
-              ${isVi ? "Bắt đầu ngay" : "立即开始"}
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M5 12h14" />
-                <path d="M13 6l6 6-6 6" />
-              </svg>
-            </button>
-          </article>
-        `).join("")}
+        <p class="upgrade-plans-loading">${isVi ? "Đang tải bảng giá..." : "正在加载价格..."}</p>
       </div>
-      <section class="upgrade-mobile-benefits">
-        <h3>${isVi ? "Đặc quyền Pro" : "Pro 特权"}</h3>
-        <ul>
-          ${benefits.map((benefit) => `
-            <li>
-              <span>
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20 6 9 17l-5-5" />
-                </svg>
-              </span>
-              <div>
-                <strong>${benefit}</strong>
-                <small>${isVi ? "Truy cập đầy đủ không giới hạn trong tài khoản của bạn." : "在你的账号中无限访问。"}</small>
-              </div>
-            </li>
-          `).join("")}
-        </ul>
-      </section>
     </div>
   `;
 
@@ -1995,27 +2037,106 @@ function showUpgradePlansModal() {
   modalDiv.onclick = (event) => {
     if (event.target === modalDiv) closeModal();
   };
-  const selectPlan = (planName) => {
-    closeModal();
-    showTransferInfoModal(planName);
+
+  const bindPlanSelection = (plans) => {
+    const selectPlan = (planId) => {
+      if (!planId) return;
+      closeModal();
+      showTransferInfoModal(planId);
+    };
+    modalDiv.addEventListener("click", (event) => {
+      const planTarget = event.target.closest("[data-upgrade-plan], [data-upgrade-plan-card]");
+      if (!planTarget || !modalDiv.contains(planTarget)) return;
+      selectPlan(planTarget.dataset.upgradePlan || planTarget.dataset.upgradePlanCard);
+    });
+    modalDiv.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const planTarget = event.target.closest("[data-upgrade-plan-card]");
+      if (!planTarget || !modalDiv.contains(planTarget)) return;
+      event.preventDefault();
+      selectPlan(planTarget.dataset.upgradePlanCard);
+    });
   };
-  modalDiv.addEventListener("click", (event) => {
-    const planTarget = event.target.closest("[data-upgrade-plan], [data-upgrade-plan-card]");
-    if (!planTarget || !modalDiv.contains(planTarget)) return;
-    selectPlan(planTarget.dataset.upgradePlan || planTarget.dataset.upgradePlanCard);
-  });
-  modalDiv.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    const planTarget = event.target.closest("[data-upgrade-plan-card]");
-    if (!planTarget || !modalDiv.contains(planTarget)) return;
-    event.preventDefault();
-    selectPlan(planTarget.dataset.upgradePlanCard);
-  });
+
+  const renderPlans = (plans) => {
+    const grid = modalDiv.querySelector(".upgrade-plans-grid");
+    if (!grid) return;
+    grid.innerHTML = plans.map((plan) => `
+      <article class="upgrade-plan-card ${plan.popular ? "popular" : ""}" data-upgrade-plan-card="${escapeAttr(plan.id)}" role="button" tabindex="0">
+        ${plan.discount ? `<div class="upgrade-popular-badge">${escapeAttr(plan.discount)}</div>` : ""}
+        <div class="upgrade-plan-kicker">${escapeAttr(isVi ? plan.nameVi : plan.nameZh)}</div>
+        <h3>${escapeAttr(isVi ? plan.durationVi : plan.durationZh)}</h3>
+        <div class="upgrade-plan-price">
+          <strong>${escapeAttr(plan.price)}</strong>
+          ${!plan.popular ? `<span>${escapeAttr(plan.note)}</span>` : ""}
+        </div>
+        ${plan.popular ? `<p class="upgrade-plan-note">${escapeAttr(plan.note)}</p>` : ""}
+        <ul>
+          ${benefits.map((benefit) => `
+            <li>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-1.1 13.7-3.6-3.6 1.4-1.4 2.2 2.2 4.8-4.8 1.4 1.4-6.2 6.2z" />
+              </svg>
+              ${benefit}
+            </li>
+          `).join("")}
+        </ul>
+        <button class="upgrade-plan-action" type="button" data-upgrade-plan="${escapeAttr(plan.id)}">
+          ${isVi ? "Bắt đầu ngay" : "立即开始"}
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12h14" />
+            <path d="M13 6l6 6-6 6" />
+          </svg>
+        </button>
+      </article>
+    `).join("");
+
+    const mobileBenefits = document.createElement("section");
+    mobileBenefits.className = "upgrade-mobile-benefits";
+    mobileBenefits.innerHTML = `
+      <h3>${isVi ? "Đặc quyền Pro" : "Pro 特权"}</h3>
+      <ul>
+        ${benefits.map((benefit) => `
+          <li>
+            <span>
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 6 9 17l-5-5" />
+              </svg>
+            </span>
+            <div>
+              <strong>${benefit}</strong>
+              <small>${isVi ? "Truy cập đầy đủ không giới hạn trong tài khoản của bạn." : "在你的账号中无限访问。"}</small>
+            </div>
+          </li>
+        `).join("")}
+      </ul>
+    `;
+    modalDiv.querySelector(".upgrade-plans-modal").appendChild(mobileBenefits);
+    bindPlanSelection(plans);
+  };
+
+  loadPaymentPlans()
+    .then((apiPlans) => {
+      const plans = buildDisplayPlans(apiPlans, isVi);
+      if (!plans.length) {
+        const grid = modalDiv.querySelector(".upgrade-plans-grid");
+        if (grid) {
+          grid.innerHTML = `<p class="upgrade-plans-loading">${isVi ? "Chưa có gói đăng ký nào." : "暂无订阅套餐。"}</p>`;
+        }
+        return;
+      }
+      renderPlans(plans);
+    })
+    .catch((error) => {
+      const grid = modalDiv.querySelector(".upgrade-plans-grid");
+      if (grid) {
+        grid.innerHTML = `<p class="upgrade-plans-loading">${escapeAttr(error.message || (isVi ? "Không thể tải bảng giá." : "无法加载价格。"))}</p>`;
+      }
+    });
 }
 
-async function showTransferInfoModal(planName) {
+async function showTransferInfoModal(planId) {
   const isVi = state.lang === "vi";
-  const planId = UPGRADE_PLAN_IDS[planName];
   const existing = document.getElementById("transferInfoModal");
   if (existing) existing.remove();
 
@@ -2193,17 +2314,18 @@ async function showTransferInfoModal(planName) {
         state.user.isPremium = statusData.premium.isPremium;
         state.user.premiumUntil = statusData.premium.premiumUntil;
         saveState();
-        const statusNode = modalDiv.querySelector("#transferPaymentStatus");
-        if (statusNode) {
-          statusNode.className = "transfer-status transfer-status-success";
-          statusNode.innerHTML = `
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M20 6 9 17l-5-5" />
-            </svg>
-            ${isVi ? "Thanh toán thành công! Gói Pro đã được kích hoạt." : "付款成功！Pro 套餐已激活。"}
-          `;
-        }
-        showToast(isVi ? "Gói Pro đã được kích hoạt!" : "Pro 套餐已激活！");
+        renderChrome();
+
+        const planName = isVi
+          ? (statusData.order.planNameVi || order.planNameVi || "Pro")
+          : (statusData.order.planNameZh || order.planNameZh || "Pro");
+        const planLabel = isVi ? `Gói ${planName} (Pro)` : `${planName} (Pro)`;
+
+        closeModal();
+        showUpgradeSuccessModal({
+          planLabel,
+          premiumUntil: statusData.premium.premiumUntil,
+        });
       }
     } catch {
       // keep polling quietly

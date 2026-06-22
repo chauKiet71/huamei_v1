@@ -267,7 +267,7 @@ button {
 
 .plan-row {
   display: grid;
-  grid-template-columns: 1.24fr 1fr 0.8fr 0.88fr 64px;
+  grid-template-columns: 1.24fr 1fr 0.8fr 0.88fr 96px;
   align-items: center;
   min-height: 76px;
   padding: 0 28px;
@@ -338,6 +338,40 @@ mark {
 .icon-action:hover {
   background: #ecfdf5;
   color: var(--green);
+}
+
+.plan-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.icon-action.delete:hover {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+mark.inactive {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.plan-empty {
+  grid-template-columns: 1fr;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.plan-guide .transaction-item img {
+  display: none;
+}
+
+.toast.error {
+  background: #991b1b;
+}
+
+.dialog-close {
+  cursor: pointer;
 }
 
 .transaction-list {

@@ -1,7 +1,8 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import * as crypto from 'crypto';
-import { formatVnd, getPlan } from './payment-plans';
+import { formatVnd } from './payment-plans';
+import { PaymentPlansService } from './payment-plans.service';
 
 export interface SepayWebhookPayload {
   id: number;
@@ -20,7 +21,10 @@ export interface SepayWebhookPayload {
 
 @Injectable()
 export class PaymentService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly paymentPlansService: PaymentPlansService,
+  ) {}
 
   getBankConfig() {
     return {
@@ -32,20 +36,11 @@ export class PaymentService {
     };
   }
 
-  listPlans() {
+  async listPlans() {
     const config = this.getBankConfig();
+    const plans = await this.paymentPlansService.listActivePlans();
     return {
-      plans: ['1m', '3m', '6m'].map((id) => {
-        const plan = getPlan(id)!;
-        return {
-          id: plan.id,
-          months: plan.months,
-          amount: plan.amount,
-          priceLabel: formatVnd(plan.amount),
-          nameVi: plan.nameVi,
-          nameZh: plan.nameZh,
-        };
-      }),
+      plans,
       bankConfigured: Boolean(config.accountNumber),
     };
   }
@@ -68,7 +63,7 @@ export class PaymentService {
   }
 
   async createOrder(userId: string, email: string, planId: string) {
-    const plan = getPlan(planId);
+    const plan = await this.paymentPlansService.getPlan(planId);
     if (!plan) {
       throw new HttpException({ error: 'Gói thanh toán không hợp lệ.' }, HttpStatus.BAD_REQUEST);
     }
@@ -176,10 +171,15 @@ export class PaymentService {
       [order.user_id],
     );
 
+    const plan = await this.paymentPlansService.getPlanById(order.plan_id);
+
     return {
       order: {
         id: order.id,
         status: order.status,
+        planId: order.plan_id,
+        planNameVi: plan?.nameVi || null,
+        planNameZh: plan?.nameZh || null,
         transferCode: order.transfer_code,
         amount: order.amount,
         paidAt: order.paid_at,
@@ -288,7 +288,7 @@ export class PaymentService {
   }
 
   private async activateOrder(order: any, sepayId: number) {
-    const plan = getPlan(order.plan_id);
+    const plan = await this.paymentPlansService.getPlanById(order.plan_id);
     if (!plan) return;
 
     const client = await this.db.getPool()!.connect();

@@ -1,9 +1,13 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { PaymentPlansService } from '../payment/payment-plans.service';
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly paymentPlansService: PaymentPlansService,
+  ) {}
 
   publicUser(row: any) {
     const premiumUntil = row.premium_until ? new Date(row.premium_until) : null;
@@ -110,5 +114,30 @@ export class AdminService {
     } catch (error: any) {
       throw new HttpException(error.message || 'Lỗi server.', HttpStatus.INTERNAL_SERVER_ERROR);
     }
+  }
+
+  async getAllPlans(headers: Record<string, string | string[] | undefined>) {
+    await this.assertAdmin(headers);
+    try {
+      const plans = await this.paymentPlansService.listAllPlans();
+      return { plans };
+    } catch (error: any) {
+      throw new HttpException(error.message || 'Lỗi server.', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async createPlan(body: any, headers: Record<string, string | string[] | undefined>) {
+    await this.assertAdmin(headers);
+    return this.paymentPlansService.createPlan(body);
+  }
+
+  async updatePlan(id: string, body: any, headers: Record<string, string | string[] | undefined>) {
+    await this.assertAdmin(headers);
+    return this.paymentPlansService.updatePlan(id, body);
+  }
+
+  async deletePlan(id: string, headers: Record<string, string | string[] | undefined>) {
+    await this.assertAdmin(headers);
+    return this.paymentPlansService.deletePlan(id);
   }
 }

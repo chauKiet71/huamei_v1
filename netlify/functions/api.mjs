@@ -6,11 +6,11 @@ const { Pool } = pg;
 let pool;
 let schemaReady;
 
-const PAYMENT_PLANS = {
-  "1m": { id: "1m", months: 1, amount: 149000, nameVi: "1 Tháng", nameZh: "1 个月" },
-  "3m": { id: "3m", months: 3, amount: 399000, nameVi: "3 Tháng", nameZh: "3 个月" },
-  "6m": { id: "6m", months: 6, amount: 699000, nameVi: "6 Tháng", nameZh: "6 个月" },
-};
+const DEFAULT_PAYMENT_PLANS = [
+  { id: "1m", months: 1, amount: 149000, nameVi: "1 Tháng", nameZh: "1 个月" },
+  { id: "3m", months: 3, amount: 399000, nameVi: "3 Tháng", nameZh: "3 个月" },
+  { id: "6m", months: 6, amount: 699000, nameVi: "6 Tháng", nameZh: "6 个月" },
+];
 
 function env(name) {
   return globalThis.Netlify?.env?.get(name) || process.env[name] || "";
@@ -105,6 +105,27 @@ async function ensureSchema() {
         received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS payment_plans (
+        id TEXT PRIMARY KEY,
+        months INTEGER NOT NULL,
+        amount INTEGER NOT NULL,
+        name_vi TEXT NOT NULL,
+        name_zh TEXT NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    for (const [index, plan] of DEFAULT_PAYMENT_PLANS.entries()) {
+      await db.query(
+        `INSERT INTO payment_plans (id, months, amount, name_vi, name_zh, is_active, sort_order)
+         VALUES ($1, $2, $3, $4, $5, TRUE, $6)
+         ON CONFLICT (id) DO NOTHING`,
+        [plan.id, plan.months, plan.amount, plan.nameVi, plan.nameZh, index + 1],
+      );
+    }
   })();
   return schemaReady;
 }
@@ -145,8 +166,56 @@ function formatVnd(amount) {
   return `${amount.toLocaleString("vi-VN")}đ`;
 }
 
-function getPlan(planId) {
-  return PAYMENT_PLANS[planId] || null;
+async function getPlanById(planId) {
+  const result = await query(
+    `SELECT id, months, amount, name_vi, name_zh
+     FROM payment_plans
+     WHERE id = $1`,
+    [planId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    months: Number(row.months),
+    amount: Number(row.amount),
+    nameVi: row.name_vi,
+    nameZh: row.name_zh,
+  };
+}
+
+async function getPlan(planId) {
+  const result = await query(
+    `SELECT id, months, amount, name_vi, name_zh
+     FROM payment_plans
+     WHERE id = $1 AND is_active = TRUE`,
+    [planId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    months: Number(row.months),
+    amount: Number(row.amount),
+    nameVi: row.name_vi,
+    nameZh: row.name_zh,
+  };
+}
+
+function mapAdminPlan(row) {
+  return {
+    id: row.id,
+    months: Number(row.months),
+    amount: Number(row.amount),
+    nameVi: row.name_vi,
+    nameZh: row.name_zh,
+    isActive: row.is_active,
+    sortOrder: Number(row.sort_order),
+    buyerCount: Number(row.buyer_count || 0),
+    priceLabel: formatVnd(Number(row.amount)),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 function bankConfig() {
@@ -245,19 +314,132 @@ async function deleteUser(req, id) {
   return json({ ok: true });
 }
 
-function listPlans() {
+async function listPlans() {
   const config = bankConfig();
+  const result = await query(
+    `SELECT id, months, amount, name_vi, name_zh, sort_order
+     FROM payment_plans
+     WHERE is_active = TRUE
+     ORDER BY sort_order ASC, created_at ASC`,
+  );
   return json({
-    plans: Object.values(PAYMENT_PLANS).map((plan) => ({
-      id: plan.id,
-      months: plan.months,
-      amount: plan.amount,
-      priceLabel: formatVnd(plan.amount),
-      nameVi: plan.nameVi,
-      nameZh: plan.nameZh,
+    plans: result.rows.map((row) => ({
+      id: row.id,
+      months: Number(row.months),
+      amount: Number(row.amount),
+      sortOrder: Number(row.sort_order),
+      priceLabel: formatVnd(Number(row.amount)),
+      nameVi: row.name_vi,
+      nameZh: row.name_zh,
     })),
     bankConfigured: Boolean(config.accountNumber),
   });
+}
+
+async function listAdminPlans(req) {
+  await assertAdmin(req);
+  const result = await query(
+    `SELECT p.*,
+            COUNT(o.id) FILTER (WHERE o.status = 'paid') AS buyer_count
+     FROM payment_plans p
+     LEFT JOIN payment_orders o ON o.plan_id = p.id
+     GROUP BY p.id
+     ORDER BY p.sort_order ASC, p.created_at ASC`,
+  );
+  return json({ plans: result.rows.map(mapAdminPlan) });
+}
+
+async function createAdminPlan(req, body) {
+  await assertAdmin(req);
+  const id = String(body.id || "").trim().toLowerCase();
+  const months = Number(body.months);
+  const amount = Number(body.amount);
+  const nameVi = String(body.nameVi || "").trim();
+  const nameZh = String(body.nameZh || "").trim();
+  const isActive = body.isActive !== false;
+  const sortOrder = Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0;
+
+  if (!/^[a-z0-9_-]{2,20}$/.test(id)) {
+    throw apiError("Mã gói phải từ 2–20 ký tự (chữ thường, số, gạch ngang).", 400);
+  }
+  if (!Number.isInteger(months) || months < 1) throw apiError("Số tháng phải là số nguyên dương.", 400);
+  if (!Number.isInteger(amount) || amount < 1000) throw apiError("Giá gói phải từ 1.000 VNĐ trở lên.", 400);
+  if (!nameVi || !nameZh) throw apiError("Tên gói (Việt/Trung) không được để trống.", 400);
+
+  try {
+    const result = await query(
+      `INSERT INTO payment_plans (id, months, amount, name_vi, name_zh, is_active, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *, 0 AS buyer_count`,
+      [id, months, amount, nameVi, nameZh, isActive, sortOrder],
+    );
+    return json({ plan: mapAdminPlan(result.rows[0]) });
+  } catch (error) {
+    if (error.code === "23505") throw apiError("Mã gói đã tồn tại.", 409);
+    throw error;
+  }
+}
+
+async function updateAdminPlan(req, id, body) {
+  await assertAdmin(req);
+  const existing = await query("SELECT id FROM payment_plans WHERE id = $1", [id]);
+  if (!existing.rows[0]) throw apiError("Không tìm thấy gói.", 404);
+
+  const months = body.months !== undefined ? Number(body.months) : undefined;
+  const amount = body.amount !== undefined ? Number(body.amount) : undefined;
+  const nameVi = body.nameVi !== undefined ? String(body.nameVi).trim() : undefined;
+  const nameZh = body.nameZh !== undefined ? String(body.nameZh).trim() : undefined;
+  const isActive = body.isActive;
+  const sortOrder = body.sortOrder !== undefined ? Number(body.sortOrder) : undefined;
+
+  if (months !== undefined && (!Number.isInteger(months) || months < 1)) {
+    throw apiError("Số tháng phải là số nguyên dương.", 400);
+  }
+  if (amount !== undefined && (!Number.isInteger(amount) || amount < 1000)) {
+    throw apiError("Giá gói phải từ 1.000 VNĐ trở lên.", 400);
+  }
+  if (nameVi !== undefined && !nameVi) throw apiError("Tên tiếng Việt không được để trống.", 400);
+  if (nameZh !== undefined && !nameZh) throw apiError("Tên tiếng Trung không được để trống.", 400);
+
+  const result = await query(
+    `UPDATE payment_plans
+     SET months = COALESCE($2, months),
+         amount = COALESCE($3, amount),
+         name_vi = COALESCE($4, name_vi),
+         name_zh = COALESCE($5, name_zh),
+         is_active = COALESCE($6, is_active),
+         sort_order = COALESCE($7, sort_order),
+         updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [id, months ?? null, amount ?? null, nameVi ?? null, nameZh ?? null, isActive ?? null, sortOrder ?? null],
+  );
+  const buyerCount = await query(
+    `SELECT COUNT(*)::int AS buyer_count
+     FROM payment_orders
+     WHERE plan_id = $1 AND status = 'paid'`,
+    [id],
+  );
+  return json({
+    plan: mapAdminPlan({
+      ...result.rows[0],
+      buyer_count: buyerCount.rows[0]?.buyer_count || 0,
+    }),
+  });
+}
+
+async function deleteAdminPlan(req, id) {
+  await assertAdmin(req);
+  const orders = await query(
+    `SELECT COUNT(*)::int AS total FROM payment_orders WHERE plan_id = $1`,
+    [id],
+  );
+  if (Number(orders.rows[0]?.total || 0) > 0) {
+    throw apiError('Không thể xóa gói đã có giao dịch. Hãy chuyển trạng thái sang "Tạm ẩn".', 409);
+  }
+  const result = await query("DELETE FROM payment_plans WHERE id = $1", [id]);
+  if (result.rowCount === 0) throw apiError("Không tìm thấy gói.", 404);
+  return json({ ok: true });
 }
 
 function buildQrImageUrl(account, bank, amount, description) {
@@ -276,7 +458,7 @@ async function createOrder(body) {
   const email = String(body.email || "").trim().toLowerCase();
   const planId = String(body.planId || "").trim();
   if (!userId || !email || !planId) throw apiError({ error: "Thiếu thông tin tạo đơn thanh toán." }, 400);
-  const plan = getPlan(planId);
+  const plan = await getPlan(planId);
   if (!plan) throw apiError({ error: "Gói thanh toán không hợp lệ." }, 400);
   const config = bankConfig();
   if (!config.accountNumber) {
@@ -342,10 +524,14 @@ async function orderStatus(orderId, userId) {
     order.status = "expired";
   }
   const userPremium = await query("SELECT is_premium, premium_until FROM users WHERE id = $1", [order.user_id]);
+  const plan = await getPlanById(order.plan_id);
   return json({
     order: {
       id: order.id,
       status: order.status,
+      planId: order.plan_id,
+      planNameVi: plan?.nameVi || null,
+      planNameZh: plan?.nameZh || null,
       transferCode: order.transfer_code,
       amount: order.amount,
       paidAt: order.paid_at,
@@ -426,7 +612,7 @@ async function findOrderFromWebhook(payload) {
 }
 
 async function activateOrder(order, sepayId) {
-  const plan = getPlan(order.plan_id);
+  const plan = await getPlanById(order.plan_id);
   if (!plan) return;
   const client = await getPool().connect();
   try {
@@ -468,6 +654,11 @@ async function route(req) {
   const adminUserMatch = path.match(/^\/api\/admin\/users\/([^/]+)$/);
   if (adminUserMatch && req.method === "PATCH") return updateUser(req, decodeURIComponent(adminUserMatch[1]), body);
   if (adminUserMatch && req.method === "DELETE") return deleteUser(req, decodeURIComponent(adminUserMatch[1]));
+  if (req.method === "GET" && path === "/api/admin/plans") return listAdminPlans(req);
+  if (req.method === "POST" && path === "/api/admin/plans") return createAdminPlan(req, body);
+  const adminPlanMatch = path.match(/^\/api\/admin\/plans\/([^/]+)$/);
+  if (adminPlanMatch && req.method === "PATCH") return updateAdminPlan(req, decodeURIComponent(adminPlanMatch[1]), body);
+  if (adminPlanMatch && req.method === "DELETE") return deleteAdminPlan(req, decodeURIComponent(adminPlanMatch[1]));
   if (req.method === "GET" && path === "/api/payments/plans") return listPlans();
   if (req.method === "POST" && path === "/api/payments/orders") return createOrder(body);
   const orderStatusMatch = path.match(/^\/api\/payments\/orders\/([^/]+)\/status$/);
