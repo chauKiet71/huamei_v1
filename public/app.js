@@ -382,6 +382,12 @@ function getThemeIcon(visualType) {
   return icons[visualType] || `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
 }
 
+const CONTENT_LOCK_ICON_SRC = "assets/content-lock-icon.png";
+
+function renderContentLockIconHTML(size = "md") {
+  return `<img class="content-lock-icon content-lock-icon--${size}" src="${CONTENT_LOCK_ICON_SRC}" alt="" aria-hidden="true" />`;
+}
+
 function iconSvg(name) {
   const icons = {
     pen: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>`,
@@ -432,6 +438,20 @@ const state = {
   adminStatus: "",
   adminTab: "users",
   paymentPlans: [],
+  hskLessonFreeItemLimits: {},
+  hskLevelCovers: {},
+  dailyLockedThemeIds: new Set(),
+  dailyThemeFreeItemLimits: {},
+  adminContentLevel: "HSK2",
+  adminContentModule: "hsk",
+  adminContentHskPanel: "locks",
+  adminContentLocks: {},
+  adminContentDailyLocks: {},
+  adminHskLevelCovers: {},
+  adminContentStatus: "",
+  adminUserSearch: "",
+  adminUserLevelFilter: "all",
+  adminUserPlanFilter: "all",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -442,6 +462,7 @@ const screens = {
   complete: $("#completeScreen"),
   admin: $("#adminScreen"),
   vocab: $("#vocabScreen"),
+  account: $("#accountScreen"),
   subscriptions: $("#subscriptionsScreen"),
 };
 const t = (key) => i18n[state.lang][key] || i18n.vi[key] || key;
@@ -635,6 +656,490 @@ function getDailyThemeCardMeta(theme) {
     desc: meta ? (isVi ? meta.descVi : meta.descZh) : (isVi ? theme.vi : theme.zh),
     visual: meta?.visual || themeVisuals[theme.id] || "chat",
   };
+}
+
+function isDailyTimeTheme(theme = {}) {
+  const values = [
+    theme.id,
+    theme.vi,
+    theme.zh,
+    theme.topic,
+    theme.title,
+    theme.lesson_title_vi,
+    theme.lesson_title_cn,
+  ]
+    .filter(Boolean)
+    .map((value) => String(value).toLowerCase());
+  return values.some((value) =>
+    value.includes("thời gian")
+    || value.includes("thoi gian")
+    || value.includes("时间")
+    || value.includes("shijian")
+    || value.includes("shíjiān"),
+  );
+}
+
+const DAILY_FEATURED_TIME_CARD = {
+  tone: "time",
+  cover: "assets/daily-theme-time-purple.png",
+  titleVi: "Thời gian",
+  titleZh: "时间",
+  zhLabel: "时间",
+  pinyin: "shíjiān",
+  descVi: "Hỏi và nói về thời gian, lịch hẹn, ngày tháng.",
+  descZh: "学习表达时间、预约和日期。",
+  icon: "clock",
+};
+
+const DAILY_FEATURED_THEME_CARDS = {
+  "hf-001-bai01": {
+    tone: "time",
+    cover: "assets/daily-theme-time-purple.png",
+    titleVi: "Thời gian",
+    titleZh: "时间",
+    zhLabel: "时间",
+    pinyin: "shíjiān",
+    descVi: "Hỏi và nói về thời gian, lịch hẹn, ngày tháng.",
+    descZh: "学习表达时间、预约和日期。",
+    icon: "clock",
+  },
+  "hf-001-bai02": {
+    tone: "breakfast",
+    cover: "assets/daily-theme-breakfast-yellow.png",
+    titleVi: "Bữa sáng",
+    titleZh: "早餐",
+    zhLabel: "早餐",
+    pinyin: "zǎocān",
+    descVi: "Gọi món, mô tả món ăn và trò chuyện khi dùng bữa sáng.",
+    descZh: "点餐、描述食物以及早餐时的日常交流。",
+    icon: "food",
+  },
+  "hf-001-bai03": {
+    tone: "city",
+    cover: "assets/daily-theme-city-blue.png",
+    titleVi: "Cảnh phố trong thành phố",
+    titleZh: "城市街景",
+    zhLabel: "城市街景",
+    pinyin: "chéngshì jiējǐng",
+    descVi: "Hỏi đường, đón xe và giao tiếp khi di chuyển trên phố.",
+    descZh: "问路、乘车以及城市街头的日常交流。",
+    icon: "bus",
+  },
+  "hf-001-bai04": {
+    tone: "housing",
+    cover: "assets/daily-theme-housing-green.png",
+    titleVi: "Tìm chỗ ở",
+    titleZh: "寻找住所",
+    zhLabel: "寻找住所",
+    pinyin: "xúnzhǎo zhùsuǒ",
+    descVi: "Tìm nhà, hỏi giá thuê và trao đổi về nơi ở.",
+    descZh: "找房、询问租金以及住宿相关交流。",
+    icon: "home",
+  },
+  "hf-002-bai05": {
+    tone: "profile",
+    cover: "assets/daily-theme-profile-blue.png",
+    titleVi: "Thông tin cá nhân",
+    titleZh: "个人情况",
+    zhLabel: "个人情况",
+    pinyin: "gèrén qíngkuàng",
+    descVi: "Giới thiệu bản thân, nói về tuổi, nghề nghiệp và thông tin cá nhân.",
+    descZh: "自我介绍、谈论年龄、职业和个人情况。",
+    icon: "profile",
+  },
+  "hf-002-bai06": {
+    tone: "relationship",
+    cover: "assets/daily-theme-relationship-pink.png",
+    titleVi: "Gia đình",
+    titleZh: "家庭",
+    zhLabel: "家庭",
+    pinyin: "jiātíng",
+    descVi: "Giới thiệu thành viên gia đình và trò chuyện về đời sống gia đình.",
+    descZh: "介绍家庭成员以及谈论家庭生活的交流。",
+    icon: "heart",
+  },
+  "hf-002-bai07": {
+    tone: "shopping",
+    cover: "assets/daily-theme-shopping-orange.png",
+    titleVi: "Trang phục",
+    titleZh: "服装",
+    zhLabel: "服装",
+    pinyin: "fúzhuāng",
+    descVi: "Mua sắm quần áo, mô tả trang phục và trao đổi về thời trang.",
+    descZh: "购买衣服、描述服装以及谈论穿搭的交流。",
+    icon: "cart",
+  },
+  "hf-002-bai08": {
+    tone: "traffic",
+    cover: "assets/daily-theme-traffic-blue.png",
+    titleVi: "Phương tiện giao thông",
+    titleZh: "交通工具",
+    zhLabel: "交通工具",
+    pinyin: "jiāotōng gōngjù",
+    descVi: "Hỏi đường, đón xe, mua vé và giao tiếp khi di chuyển trong thành phố.",
+    descZh: "问路、乘车、买票以及城市出行交流。",
+    icon: "bus",
+  },
+  "hf-002-bai09": {
+    tone: "holiday",
+    cover: "assets/daily-theme-holiday-red.png",
+    titleVi: "Rạp chiếu phim",
+    titleZh: "电影院",
+    zhLabel: "电影院",
+    pinyin: "diànyǐngyuàn",
+    descVi: "Mua vé, chọn phim và trò chuyện khi đi xem phim.",
+    descZh: "购票、选片以及看电影时的日常交流。",
+    icon: "star",
+  },
+  "hf-002-bai10": {
+    tone: "city",
+    cover: "assets/daily-theme-city-blue.png",
+    titleVi: "Từ vựng liên quan đến thể thao",
+    titleZh: "体育运动相关",
+    zhLabel: "体育运动",
+    pinyin: "tǐyù yùndòng",
+    descVi: "Nói về môn thể thao, tập luyện và các hoạt động thể chất.",
+    descZh: "谈论运动项目、锻炼和体育活动。",
+    icon: "bus",
+  },
+  "hf-003-bai11": {
+    tone: "sickleave",
+    cover: "assets/daily-theme-sickleave-teal.png",
+    titleVi: "Bệnh viện",
+    titleZh: "医院",
+    zhLabel: "医院",
+    pinyin: "yīyuàn",
+    descVi: "Giao tiếp khi khám bệnh, làm thủ tục và trao đổi với nhân viên y tế.",
+    descZh: "就医、办理手续以及与医护人员交流。",
+    icon: "clinic",
+  },
+  "hf-003-bai12": {
+    tone: "office",
+    cover: "assets/daily-theme-office-navy.png",
+    titleVi: "Công ty và pháp nhân",
+    titleZh: "公司与法人",
+    zhLabel: "公司与法人",
+    pinyin: "gōngsī yǔ fǎrén",
+    descVi: "Trao đổi về công ty, pháp nhân và các vấn đề kinh doanh liên quan.",
+    descZh: "交流公司、法人以及商务相关话题。",
+    icon: "briefcase",
+  },
+  "hf-003-bai13": {
+    tone: "classroom",
+    cover: "assets/daily-theme-classroom-green.png",
+    titleVi: "Trường học",
+    titleZh: "学校",
+    zhLabel: "学校",
+    pinyin: "xuéxiào",
+    descVi: "Giao tiếp trong môi trường trường lớp, sự kiện và hoạt động học đường.",
+    descZh: "在学校环境、校园活动和课堂日常中交流。",
+    icon: "book",
+  },
+  "hf-topic-unit-bai01": {
+    tone: "greeting",
+    cover: "assets/daily-theme-greeting-yellow.png",
+    titleVi: "Chào hỏi và giới thiệu",
+    titleZh: "问候与介绍",
+    zhLabel: "问候与介绍",
+    pinyin: "wènhòu yǔ jièshào",
+    descVi: "Làm quen, giới thiệu bản thân và chào hỏi thông thường trong đời sống hàng ngày.",
+    descZh: "认识新朋友、自我介绍和日常生活中的常用问候。",
+    icon: "wave",
+  },
+  "hf-topic-unit-bai02": {
+    tone: "interview",
+    cover: "assets/daily-theme-interview-blue.png",
+    titleVi: "Phỏng vấn xin việc",
+    titleZh: "工作面试",
+    zhLabel: "工作面试",
+    pinyin: "gōngzuò miànshì",
+    descVi: "Chuẩn bị hồ sơ, giới thiệu bản thân và trả lời các câu hỏi phỏng vấn thường gặp.",
+    descZh: "准备简历、自我介绍并回答常见面试问题。",
+    icon: "briefcase",
+  },
+  "hf-topic-unit-bai03": {
+    tone: "classroom",
+    cover: "assets/daily-theme-classroom-green.png",
+    titleVi: "Học tập trên lớp",
+    titleZh: "课堂学习",
+    zhLabel: "课堂学习",
+    pinyin: "kètáng xuéxí",
+    descVi: "Giao tiếp với giáo viên, bạn cùng lớp và tham gia các hoạt động học tập hằng ngày.",
+    descZh: "与老师、同学交流并参与日常课堂活动。",
+    icon: "book",
+  },
+  "hf-topic-unit-bai04": {
+    tone: "travel",
+    cover: "assets/daily-theme-travel-blue.png",
+    titleVi: "Du lịch",
+    titleZh: "旅游",
+    zhLabel: "旅游",
+    pinyin: "lǚyóu",
+    descVi: "Đặt vé, hỏi đường, đặt phòng khách sạn và xử lý tình huống khi đi du lịch.",
+    descZh: "订票、问路、订酒店以及旅行中的常见情景。",
+    icon: "plane",
+  },
+  "hf-topic-unit-bai05": {
+    tone: "shopping",
+    cover: "assets/daily-theme-shopping-orange.png",
+    titleVi: "Gọi món và mua sắm",
+    titleZh: "点餐购物",
+    zhLabel: "点餐购物",
+    pinyin: "diǎncān gòuwù",
+    descVi: "Gọi món, thanh toán, mặc cả và mua bán hàng hóa trong đời sống hằng ngày.",
+    descZh: "点餐、结账、讨价还价和日常购物交流。",
+    icon: "cart",
+  },
+  "hf-topic-unit-bai06": {
+    tone: "traffic",
+    cover: "assets/daily-theme-traffic-blue.png",
+    titleVi: "Đi lại và giao thông",
+    titleZh: "出行交通",
+    zhLabel: "出行交通",
+    pinyin: "chūxíng jiāotōng",
+    descVi: "Hỏi đường, đón xe, mua vé và giao tiếp khi di chuyển trong thành phố.",
+    descZh: "问路、乘车、买票以及城市出行交流。",
+    icon: "bus",
+  },
+  "hf-topic-unit-bai07": {
+    tone: "renting-life",
+    cover: "assets/daily-theme-renting-brown.png",
+    titleVi: "Thuê nhà và sinh hoạt",
+    titleZh: "租房生活",
+    zhLabel: "租房生活",
+    pinyin: "zūfáng shēnghuó",
+    descVi: "Tìm nhà, thương lượng giá thuê và trao đổi các vấn đề sinh hoạt hằng ngày.",
+    descZh: "找房、谈租金以及处理日常生活问题。",
+    icon: "home",
+  },
+  "hf-topic-unit-bai08": {
+    tone: "sickleave",
+    cover: "assets/daily-theme-sickleave-teal.png",
+    titleVi: "Bị bệnh và xin nghỉ",
+    titleZh: "生病与请假",
+    zhLabel: "生病与请假",
+    pinyin: "shēngbìng yǔ qǐngjià",
+    descVi: "Mô tả triệu chứng, đi khám bệnh và xin nghỉ làm hoặc nghỉ học.",
+    descZh: "描述症状、就医以及请假的相关表达。",
+    icon: "clinic",
+  },
+  "hf-topic-unit-bai09": {
+    tone: "office",
+    cover: "assets/daily-theme-office-navy.png",
+    titleVi: "Đời sống công sở",
+    titleZh: "职场生活",
+    zhLabel: "职场生活",
+    pinyin: "zhíchǎng shēnghuó",
+    descVi: "Giao tiếp văn phòng, viết email, họp báo cáo và đàm phán thương mại.",
+    descZh: "办公室沟通、写邮件、开会汇报和商务洽谈。",
+    icon: "desk",
+  },
+  "hf-topic-unit-bai10": {
+    tone: "factory",
+    cover: "assets/daily-theme-factory-gray.png",
+    titleVi: "Nhà máy và xưởng sản xuất",
+    titleZh: "工厂车间",
+    zhLabel: "工厂车间",
+    pinyin: "gōngchǎng chējiān",
+    descVi: "Trao đổi công việc, an toàn lao động và phối hợp trong môi trường nhà máy.",
+    descZh: "工厂作业、安全规范与生产协作交流。",
+    icon: "gear",
+  },
+  "hf-topic-unit-bai11": {
+    tone: "ecommerce",
+    cover: "assets/daily-theme-ecommerce-purple.png",
+    titleVi: "Công việc thương mại điện tử",
+    titleZh: "电商职场",
+    zhLabel: "电商职场",
+    pinyin: "diànshāng zhíchǎng",
+    descVi: "Chăm sóc khách hàng, xử lý đơn hàng và giao tiếp trong môi trường thương mại điện tử.",
+    descZh: "客户服务、订单处理与电商职场沟通。",
+    icon: "shop",
+  },
+  "hf-topic-unit-bai12": {
+    tone: "relationship",
+    cover: "assets/daily-theme-relationship-pink.png",
+    titleVi: "Mối quan hệ thân thiết",
+    titleZh: "亲密关系",
+    zhLabel: "亲密关系",
+    pinyin: "qīnmì guānxì",
+    descVi: "Thể hiện cảm xúc, rủ đi chơi, tán gẫu và xây dựng các mối quan hệ xã hội.",
+    descZh: "表达情感、邀约、闲聊以及建立社交关系。",
+    icon: "heart",
+  },
+  "hf-003-bai14": {
+    tone: "admin",
+    cover: "assets/daily-theme-admin-blue.png",
+    titleVi: "Hành chính và hiến pháp",
+    titleZh: "行政与宪法",
+    zhLabel: "行政与宪法",
+    pinyin: "xíngzhèng yǔ xiànfǎ",
+    descVi: "Trao đổi về thủ tục hành chính, quy định pháp luật và các vấn đề công vụ.",
+    descZh: "交流行政手续、法律法规和公务相关话题。",
+    icon: "desk",
+  },
+  "hf-003-bai15": {
+    tone: "holiday",
+    cover: "assets/daily-theme-holiday-red.png",
+    titleVi: "Ngày nghỉ và lễ hội",
+    titleZh: "假日与节庆",
+    zhLabel: "假日与节庆",
+    pinyin: "jiàrì yǔ jiéqìng",
+    descVi: "Nói về ngày lễ, kỳ nghỉ và các hoạt động vui chơi trong dịp lễ hội.",
+    descZh: "谈论节日、假期以及节庆期间的日常交流。",
+    icon: "star",
+  },
+  "hf-003-bai16": {
+    tone: "travel-gear",
+    cover: "assets/daily-theme-travel-gear-teal.png",
+    titleVi: "Đồ dùng du lịch",
+    titleZh: "旅行用品",
+    zhLabel: "旅行用品",
+    pinyin: "lǚxíng yòngpǐn",
+    descVi: "Chuẩn bị hành lý, mua sắm đồ dùng và trao đổi khi chuẩn bị đi du lịch.",
+    descZh: "准备行李、购买旅行用品以及出行前的相关交流。",
+    icon: "map",
+  },
+  "hf-003-bai17": {
+    tone: "universe",
+    cover: "assets/daily-theme-universe-purple.png",
+    titleVi: "Vũ trụ",
+    titleZh: "宇宙",
+    zhLabel: "宇宙",
+    pinyin: "yǔzhòu",
+    descVi: "Học từ vựng và mô tả về không gian, hành tinh và các hiện tượng vũ trụ.",
+    descZh: "学习描述太空、行星和宇宙现象的相关表达。",
+    icon: "star",
+  },
+};
+
+const DAILY_FEATURED_FALLBACK_SLOTS = [
+  { tone: "time", cover: "assets/daily-theme-time-purple.png", icon: "clock" },
+  { tone: "breakfast", cover: "assets/daily-theme-breakfast-yellow.png", icon: "food" },
+  { tone: "city", cover: "assets/daily-theme-city-blue.png", icon: "bus" },
+  { tone: "housing", cover: "assets/daily-theme-housing-green.png", icon: "home" },
+  { tone: "profile", cover: "assets/daily-theme-profile-blue.png", icon: "profile" },
+  { tone: "greeting", cover: "assets/daily-theme-greeting-yellow.png", icon: "wave" },
+  { tone: "interview", cover: "assets/daily-theme-interview-blue.png", icon: "briefcase" },
+  { tone: "classroom", cover: "assets/daily-theme-classroom-green.png", icon: "book" },
+  { tone: "travel", cover: "assets/daily-theme-travel-blue.png", icon: "plane" },
+  { tone: "shopping", cover: "assets/daily-theme-shopping-orange.png", icon: "cart" },
+  { tone: "traffic", cover: "assets/daily-theme-traffic-blue.png", icon: "bus" },
+  { tone: "renting-life", cover: "assets/daily-theme-renting-brown.png", icon: "home" },
+  { tone: "sickleave", cover: "assets/daily-theme-sickleave-teal.png", icon: "clinic" },
+  { tone: "office", cover: "assets/daily-theme-office-navy.png", icon: "desk" },
+  { tone: "factory", cover: "assets/daily-theme-factory-gray.png", icon: "gear" },
+  { tone: "ecommerce", cover: "assets/daily-theme-ecommerce-purple.png", icon: "shop" },
+  { tone: "relationship", cover: "assets/daily-theme-relationship-pink.png", icon: "heart" },
+  { tone: "admin", cover: "assets/daily-theme-admin-blue.png", icon: "desk" },
+  { tone: "holiday", cover: "assets/daily-theme-holiday-red.png", icon: "star" },
+  { tone: "travel-gear", cover: "assets/daily-theme-travel-gear-teal.png", icon: "map" },
+  { tone: "universe", cover: "assets/daily-theme-universe-purple.png", icon: "star" },
+];
+
+function getDailyThemeDescBoth(theme = {}) {
+  const preset = dailyThemeCardMeta[theme.id];
+  if (preset) {
+    return { descVi: preset.descVi, descZh: preset.descZh };
+  }
+  return {
+    descVi: theme.vi || theme.lesson_title_vi || "",
+    descZh: theme.zh || theme.lesson_title_cn || "",
+  };
+}
+
+function buildDailyFeaturedThemeFallback(theme = {}) {
+  const cardMeta = getDailyThemeCardMeta(theme);
+  const descBoth = getDailyThemeDescBoth(theme);
+  const themeIndex = dailyThemes.findIndex((item) => item.id === theme.id);
+  const slot = DAILY_FEATURED_FALLBACK_SLOTS[
+    themeIndex >= 0 ? themeIndex % DAILY_FEATURED_FALLBACK_SLOTS.length : 0
+  ];
+  const visual = themeVisuals[theme.id] || cardMeta.visual || "chat";
+  const icon = slot.icon || visual;
+  return {
+    tone: slot.tone,
+    cover: slot.cover,
+    titleVi: theme.vi || cardMeta.title,
+    titleZh: theme.zh || cardMeta.title,
+    zhLabel: theme.zh || theme.vi || cardMeta.title,
+    pinyin: "",
+    descVi: descBoth.descVi,
+    descZh: descBoth.descZh,
+    icon,
+  };
+}
+
+function getDailyFeaturedThemeConfig(theme = {}) {
+  if (DAILY_FEATURED_THEME_CARDS[theme.id]) {
+    return DAILY_FEATURED_THEME_CARDS[theme.id];
+  }
+  if (isDailyTimeTheme(theme)) {
+    return DAILY_FEATURED_TIME_CARD;
+  }
+  return buildDailyFeaturedThemeFallback(theme);
+}
+
+function renderDailyFeaturedThemeIcon(iconType) {
+  const icons = {
+    clock: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>`,
+    food: getThemeIcon("food"),
+    bus: getThemeIcon("bus"),
+    home: getThemeIcon("home"),
+    profile: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M5 20a7 7 0 0 1 14 0"></path></svg>`,
+    cart: getThemeIcon("cart"),
+    clinic: getThemeIcon("clinic"),
+    wave: getThemeIcon("wave"),
+    briefcase: getThemeIcon("briefcase"),
+    book: getThemeIcon("book"),
+    plane: getThemeIcon("plane"),
+    map: getThemeIcon("map"),
+    star: `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 2l2.6 5.1 5.7.8-4.1 4 1 5.7L12 15l-5.1 2.7 1-5.7-4.1-4 5.7-.8L12 2z"/></svg>`,
+    desk: getThemeIcon("desk"),
+    gear: getThemeIcon("gear"),
+    shop: getThemeIcon("shop"),
+    heart: getThemeIcon("heart"),
+  };
+  return icons[iconType] || icons.clock;
+}
+
+function renderDailyFeaturedThemeCardHTML(theme, cardMeta, isLocked, countLabel, isVi, config) {
+  const itemCount = Array.isArray(theme.items) ? theme.items.length : 0;
+  const buttonLabel = isLocked ? lockedContentCtaText() : (isVi ? "Vào học" : "开始学习");
+  const title = isVi ? config.titleVi : config.titleZh;
+  const desc = isVi ? config.descVi : config.descZh;
+  return `
+      <article class="daily-theme-card daily-theme-card--featured daily-theme-card--${config.tone} ${isLocked ? "locked" : ""}" data-theme="${theme.id}" ${isLocked ? 'data-locked="true"' : ""}>
+        <img
+          class="daily-theme-cover"
+          src="${config.cover}"
+          alt="${escapeAttr(title)}"
+          aria-hidden="true"
+        />
+        <div class="daily-theme-card-time-overlay"></div>
+        <div class="daily-theme-card-time-content">
+          <div class="daily-theme-card-time-top">
+            <span class="daily-theme-count-badge">${itemCount} ${countLabel}</span>
+          </div>
+          <div class="daily-theme-card-time-body">
+            <div class="daily-theme-time-title-row">
+              <span class="daily-theme-time-icon" aria-hidden="true">
+                ${renderDailyFeaturedThemeIcon(config.icon)}
+              </span>
+              <h3 class="daily-theme-title">${title}</h3>
+            </div>
+            <p class="daily-theme-time-zh">${config.zhLabel} <span>${config.pinyin}</span></p>
+            <p class="daily-theme-desc">${desc}</p>
+          </div>
+          <button class="daily-theme-enter-btn" type="button" ${isLocked ? "disabled" : ""}>
+            ${buttonLabel}
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>
+            </svg>
+          </button>
+        </div>
+      </article>
+  `;
 }
 
 function lessonVisualClass(index) {
@@ -879,6 +1384,10 @@ function escapeAttr(value) {
     .replace(/>/g, "&gt;");
 }
 
+function escapeHtml(value) {
+  return escapeAttr(value);
+}
+
 const BACKEND_DISABLED = false;
 const BACKEND_DISABLED_MESSAGE = "Bản Netlify hiện chỉ chạy nội dung học tĩnh, chưa bật đăng nhập.";
 
@@ -886,25 +1395,41 @@ function formatPlanPrice(amount) {
   return `${Number(amount || 0).toLocaleString("vi-VN")}đ`;
 }
 
+function planDurationDays(plan) {
+  const value = Number(plan.months) || 0;
+  return plan.durationUnit === "days" ? value : value * 30;
+}
+
 function buildDisplayPlans(apiPlans, isVi) {
   const sorted = [...(apiPlans || [])].sort((a, b) => {
     if (a.sortOrder !== b.sortOrder) return (a.sortOrder || 0) - (b.sortOrder || 0);
-    return a.months - b.months;
+    return planDurationDays(a) - planDurationDays(b);
   });
   if (!sorted.length) return [];
 
-  const baseMonthly = sorted[0].amount / sorted[0].months;
+  const monthPlans = sorted.filter((plan) => plan.durationUnit !== "days");
+  const baseMonthly = monthPlans.length
+    ? monthPlans[0].amount / monthPlans[0].months
+    : sorted[0].amount / Math.max(1, planDurationDays(sorted[0]) / 30);
   const popularIndex = sorted.length >= 3 ? 1 : sorted.length === 2 ? 1 : 0;
 
   return sorted.map((plan, index) => {
-    const monthly = Math.round(plan.amount / plan.months);
-    const savings = plan.months === sorted[0].months
+    const isDayPlan = plan.durationUnit === "days";
+    const monthly = isDayPlan
+      ? Math.round(plan.amount / Math.max(1, plan.months / 30))
+      : Math.round(plan.amount / plan.months);
+    const savings = !isDayPlan && monthPlans.length && plan.months === monthPlans[0].months
       ? 0
-      : Math.max(0, Math.round((1 - plan.amount / (baseMonthly * plan.months)) * 100));
+      : !isDayPlan && monthPlans.length
+        ? Math.max(0, Math.round((1 - plan.amount / (baseMonthly * plan.months)) * 100))
+        : 0;
 
     let kickerVi;
     let kickerZh;
-    if (plan.months === sorted[0].months) {
+    if (isDayPlan) {
+      kickerVi = plan.nameVi;
+      kickerZh = plan.nameZh;
+    } else if (plan.months === monthPlans[0]?.months) {
       kickerVi = "Gói cơ bản";
       kickerZh = "基础套餐";
     } else if (savings > 0) {
@@ -915,9 +1440,11 @@ function buildDisplayPlans(apiPlans, isVi) {
       kickerZh = plan.nameZh;
     }
 
-    const note = plan.months === 1
-      ? (isVi ? "/tháng" : "/月")
-      : (isVi ? `Chỉ ~${Math.round(monthly / 1000)}k / tháng` : `仅 ~${Math.round(monthly / 1000)}k / 月`);
+    const note = isDayPlan
+      ? (isVi ? `${plan.months} ngày` : `${plan.months} 天`)
+      : plan.months === 1
+        ? (isVi ? "/tháng" : "/月")
+        : (isVi ? `Chỉ ~${Math.round(monthly / 1000)}k / tháng` : `仅 ~${Math.round(monthly / 1000)}k / 月`);
 
     return {
       id: plan.id,
@@ -1009,8 +1536,8 @@ function showUpgradeSuccessModal({ planLabel, premiumUntil }) {
       </div>
       <h2>${isVi ? "Nâng cấp thành công!" : "升级成功！"}</h2>
       <p class="upgrade-success-subtitle">${isVi
-    ? "Chào mừng bạn đến với gói Pro. Toàn bộ tính năng cao cấp đã được mở khóa."
-    : "欢迎加入 Pro 套餐，全部高级功能已解锁。"}</p>
+      ? "Chào mừng bạn đến với gói Pro. Toàn bộ tính năng cao cấp đã được mở khóa."
+      : "欢迎加入 Pro 套餐，全部高级功能已解锁。"}</p>
       <div class="upgrade-success-details">
         <div class="upgrade-success-row">
           <span>${isVi ? "GÓI ĐĂNG KÝ" : "订阅套餐"}</span>
@@ -1051,6 +1578,542 @@ function showUpgradeSuccessModal({ planLabel, premiumUntil }) {
 function isActivePremiumUser(user) {
   const premiumUntil = user?.premiumUntil ? new Date(user.premiumUntil) : null;
   return Boolean(user?.isPremium && (!premiumUntil || premiumUntil.getTime() > Date.now()));
+}
+
+function hasPremiumAccess() {
+  if (state.user?.role === "admin") return true;
+  return isActivePremiumUser(state.user);
+}
+
+function getHskLessonFreeItemLimit(lessonId) {
+  if (!Object.prototype.hasOwnProperty.call(state.hskLessonFreeItemLimits || {}, lessonId)) {
+    return null;
+  }
+  const value = Number(state.hskLessonFreeItemLimits?.[lessonId] || 0);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return Math.floor(value);
+}
+
+function isHskLessonLockedForUser(lessonId) {
+  if (hasPremiumAccess()) return false;
+  const freeLimit = getHskLessonFreeItemLimit(lessonId);
+  if (freeLimit === null) return false;
+  return !canAccessHskLessonItem(lessonId, 0);
+}
+
+function isDailyThemeLockedForUser(themeId) {
+  if (hasPremiumAccess()) return false;
+  return state.dailyLockedThemeIds.has(themeId);
+}
+
+function getDailyThemeFreeItemLimit(themeId) {
+  if (!Object.prototype.hasOwnProperty.call(state.dailyThemeFreeItemLimits || {}, themeId)) {
+    return null;
+  }
+  const value = Number(state.dailyThemeFreeItemLimits?.[themeId] || 0);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return Math.floor(value);
+}
+
+function canAccessHskLesson(lessonId) {
+  return !isHskLessonLockedForUser(lessonId);
+}
+
+function canAccessHskLessonItem(lessonId, itemIndex) {
+  if (hasPremiumAccess()) return true;
+  const freeLimit = getHskLessonFreeItemLimit(lessonId);
+  if (freeLimit === null) return true;
+  const sentenceNo = Number(itemIndex) + 1;
+  return sentenceNo <= freeLimit;
+}
+
+function canAccessDailyTheme(themeId) {
+  return !isDailyThemeLockedForUser(themeId);
+}
+
+function canAccessDailyThemeItem(themeId, itemIndex) {
+  if (hasPremiumAccess()) return true;
+  if (isDailyThemeLockedForUser(themeId)) return false;
+  const freeLimit = getDailyThemeFreeItemLimit(themeId);
+  if (freeLimit === null) return true;
+  const itemNo = Number(itemIndex) + 1;
+  return itemNo <= freeLimit;
+}
+
+function promptHskLessonLocked() {
+  promptUpgradeLocked();
+}
+
+function promptUpgradeLocked() {
+  const isVi = state.lang === "vi";
+  if (!state.user) {
+    showToast(isVi ? "Vui lòng đăng nhập để truy cập nội dung này." : "请先登录以访问此内容。");
+    showModal("login");
+    return;
+  }
+  showToast(isVi ? "Nội dung này yêu cầu gói Pro." : "此内容需要 Pro 套餐。");
+  showUpgradePlansModal();
+}
+
+function requireLoginForPractice() {
+  const isVi = state.lang === "vi";
+  if (!state.user) {
+    showToast(isVi ? "Vui lòng đăng nhập để luyện viết." : "请先登录以进行书写练习。");
+    showModal("login");
+    return false;
+  }
+  return true;
+}
+
+function lockedContentCtaText() {
+  const isVi = state.lang === "vi";
+  if (!state.user) return isVi ? "Đăng nhập" : "登录";
+  return isVi ? "Yêu cầu Pro" : "需要 Pro";
+}
+
+async function loadContentLocks() {
+  if (BACKEND_DISABLED) {
+    state.hskLessonFreeItemLimits = {};
+    state.hskLevelCovers = {};
+    state.dailyLockedThemeIds = new Set();
+    state.dailyThemeFreeItemLimits = {};
+    return;
+  }
+  try {
+    const [hskData, dailyData, coverData] = await Promise.all([
+      apiRequest("/api/content/hsk-locks"),
+      apiRequest("/api/content/daily-locks"),
+      apiRequest("/api/content/hsk-level-covers"),
+    ]);
+    state.hskLessonFreeItemLimits = Object.fromEntries(
+      (hskData.lessonLocks || [])
+        .map((item) => [item.lessonId, Math.max(0, Number(item.freeItemLimit || 0))])
+        .filter(([, limit]) => limit > 0),
+    );
+    state.hskLevelCovers = Object.fromEntries(
+      (coverData.covers || []).map((item) => [item.level, String(item.coverUrl || "").trim()]),
+    );
+    state.dailyThemeFreeItemLimits = Object.fromEntries(
+      (dailyData.themeLocks || [])
+        .map((item) => [item.themeId, Math.max(0, Number(item.freeItemLimit || 0))])
+        .filter(([, limit]) => limit > 0),
+    );
+    state.dailyLockedThemeIds = new Set(
+      (dailyData.lockedThemeIds || []).filter((themeId) => !state.dailyThemeFreeItemLimits?.[themeId]),
+    );
+  } catch {
+    state.hskLessonFreeItemLimits = {};
+    state.hskLevelCovers = {};
+    state.dailyLockedThemeIds = new Set();
+    state.dailyThemeFreeItemLimits = {};
+  }
+}
+
+async function loadHskLessonLocks() {
+  return loadContentLocks();
+}
+
+function getHskLessonsCatalog() {
+  return Object.keys(hskLevels).flatMap((level) =>
+    hskLevels[level].map((lesson) => ({
+      lessonId: lesson.id,
+      level,
+      lessonNo: lesson.no,
+      titleVi: lesson.titleVi || lesson.title || "",
+    })),
+  );
+}
+
+function getDailyThemesCatalog() {
+  return dailyThemes.map((theme, index) => ({
+    themeId: theme.id,
+    sortOrder: index + 1,
+    titleVi: theme.vi || "",
+  }));
+}
+
+function buildAdminContentLocksMap(locks = []) {
+  const map = {};
+  locks.forEach((item) => {
+    map[item.lessonId] = {
+      freeItemLimit: Math.max(0, Number(item.freeItemLimit || 0)),
+    };
+  });
+  return map;
+}
+
+function parseAdminFreeItemLimit(value) {
+  const parsed = Math.floor(Number(value || 0));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function syncAdminHskContentLocksFromDOM(root = document) {
+  root.querySelectorAll("[data-admin-content-limit]").forEach((input) => {
+    if (!input.matches("input[type='number']")) return;
+    const lessonId = input.dataset.adminContentLimit;
+    if (!lessonId) return;
+    state.adminContentLocks[lessonId] = {
+      freeItemLimit: parseAdminFreeItemLimit(input.value),
+    };
+  });
+}
+
+function syncAdminDailyContentLocksFromDOM(root = document) {
+  root.querySelectorAll("[data-admin-content-daily-limit]").forEach((input) => {
+    if (!input.matches("input[type='number']")) return;
+    const themeId = input.dataset.adminContentDailyLimit;
+    if (!themeId) return;
+    const prev = state.adminContentDailyLocks[themeId] || { lockedForFree: false, freeItemLimit: 0 };
+    state.adminContentDailyLocks[themeId] = {
+      ...prev,
+      freeItemLimit: parseAdminFreeItemLimit(input.value),
+    };
+  });
+}
+
+function updateAdminDailyLockConfig(themeId, patch = {}) {
+  const prev = state.adminContentDailyLocks[themeId] || { lockedForFree: false, freeItemLimit: 0 };
+  state.adminContentDailyLocks[themeId] = {
+    lockedForFree: patch.lockedForFree !== undefined ? patch.lockedForFree === true : prev.lockedForFree === true,
+    freeItemLimit: parseAdminFreeItemLimit(
+      patch.freeItemLimit !== undefined ? patch.freeItemLimit : prev.freeItemLimit,
+    ),
+  };
+}
+
+function updateAdminHskLockConfig(lessonId, patch = {}) {
+  const prev = state.adminContentLocks[lessonId] || { freeItemLimit: 0 };
+  state.adminContentLocks[lessonId] = {
+    freeItemLimit: parseAdminFreeItemLimit(
+      patch.freeItemLimit !== undefined ? patch.freeItemLimit : prev.freeItemLimit,
+    ),
+  };
+}
+
+const HSK_LEVEL_IDS = ["HSK1", "HSK2", "HSK3", "HSK4", "HSK5", "HSK6"];
+const HSK_LEVEL_DEFAULT_COVERS = {
+  HSK1: "assets/hsk-level-card-bg.png",
+  HSK2: "assets/hsk2-card-bg.png",
+  HSK3: "assets/hsk3-card-bg.png",
+  HSK4: "assets/hsk4-card-bg.png",
+  HSK5: "assets/hsk5-card-bg.png",
+  HSK6: "assets/hsk6-card-bg.png",
+};
+const DEFAULT_HSK_LEVEL_COVER = HSK_LEVEL_DEFAULT_COVERS.HSK1;
+const MAX_HSK_LEVEL_COVER_BYTES = 900000;
+const MAX_ACCOUNT_AVATAR_SOURCE_BYTES = 5 * 1024 * 1024;
+const ACCOUNT_AVATAR_SIZE = 320;
+const ACCOUNT_DEFAULT_AVATAR = "assets/review_user_1.png";
+
+function getDefaultHskLevelCoverUrl(level) {
+  return HSK_LEVEL_DEFAULT_COVERS[level] || DEFAULT_HSK_LEVEL_COVER;
+}
+
+function buildAdminHskLevelCoversMap(covers = []) {
+  const map = {};
+  HSK_LEVEL_IDS.forEach((level) => {
+    map[level] = "";
+  });
+  covers.forEach((item) => {
+    if (item?.level) map[item.level] = String(item.coverUrl || "").trim();
+  });
+  return map;
+}
+
+function getHskLevelCoverUrl(level) {
+  const url = String(state.hskLevelCovers?.[level] || "").trim();
+  return url || getDefaultHskLevelCoverUrl(level);
+}
+
+function getAdminHskLevelCoverPreview(level) {
+  const url = String(state.adminHskLevelCovers?.[level] || "").trim();
+  return url || getDefaultHskLevelCoverUrl(level);
+}
+
+function syncAdminHskLevelCoversFromDOM(root = document) {
+  root.querySelectorAll("[data-admin-hsk-cover-url]").forEach((input) => {
+    const level = input.dataset.adminHskCoverUrl;
+    if (!level) return;
+    state.adminHskLevelCovers[level] = String(input.value || "").trim();
+  });
+}
+
+function updateAdminHskLevelCoverPreview(level) {
+  const preview = document.querySelector(`[data-admin-cover-preview="${level}"]`);
+  if (preview) preview.src = getAdminHskLevelCoverPreview(level);
+}
+
+function buildAdminContentDailyLocksMap(locks = []) {
+  const map = {};
+  locks.forEach((item) => {
+    map[item.themeId] = {
+      lockedForFree: item.lockedForFree === true,
+      freeItemLimit: Math.max(0, Number(item.freeItemLimit || 0)),
+    };
+  });
+  return map;
+}
+
+async function loadAdminContentLocks() {
+  const isVi = state.lang === "vi";
+  if (!isAdminUser()) {
+    state.adminContentStatus = isVi ? "Vui lòng đăng nhập bằng tài khoản admin." : "请使用管理员账户登录。";
+    state.adminContentLocks = {};
+    state.adminContentDailyLocks = {};
+    state.adminHskLevelCovers = {};
+    renderAdmin();
+    return;
+  }
+
+  state.adminContentStatus = isVi ? "Đang tải cấu hình nội dung..." : "正在加载内容配置...";
+  renderAdmin();
+  try {
+    const headers = { "X-Admin-User-Id": state.user?.id || "" };
+    const [hskData, dailyData, coverData] = await Promise.all([
+      apiRequest("/api/admin/content/hsk-locks", { headers }),
+      apiRequest("/api/admin/content/daily-locks", { headers }),
+      apiRequest("/api/admin/content/hsk-level-covers", { headers }),
+    ]);
+    state.adminContentLocks = buildAdminContentLocksMap(hskData.locks || []);
+    state.adminContentDailyLocks = buildAdminContentDailyLocksMap(dailyData.locks || []);
+    state.adminHskLevelCovers = buildAdminHskLevelCoversMap(coverData.covers || []);
+    const lockedHsk = (hskData.locks || []).filter((item) => Number(item.freeItemLimit || 0) > 0).length;
+    const lockedDaily = (dailyData.locks || []).filter((item) => item.lockedForFree).length;
+    state.adminContentStatus = isVi
+      ? `Đã tải ${lockedHsk} bài HSK có giới hạn Free và ${lockedDaily} chủ đề giao tiếp đang khóa cho gói Free.`
+      : `已加载 ${lockedHsk} 个 HSK 课程限免配置和 ${lockedDaily} 个交际主题锁定。`;
+  } catch (error) {
+    state.adminContentLocks = {};
+    state.adminContentDailyLocks = {};
+    state.adminHskLevelCovers = {};
+    state.adminContentStatus = error.message;
+  }
+  renderAdmin();
+}
+
+function renderAdminHskLevelCoversHTML(isVi) {
+  const cards = hskLevelCards.map((card) => {
+    const coverUrl = String(state.adminHskLevelCovers?.[card.level] || "").trim();
+    const previewUrl = getAdminHskLevelCoverPreview(card.level);
+    return `
+      <div class="admin-hsk-cover-card">
+        <div class="admin-hsk-cover-preview">
+          <img data-admin-cover-preview="${escapeAttr(card.level)}" src="${escapeAttr(previewUrl)}" alt="" />
+        </div>
+        <div class="admin-hsk-cover-meta">
+          <strong>${escapeHtml(card.level)}</strong>
+          <span>${escapeHtml(isVi ? card.vi : card.zh)}</span>
+        </div>
+        <label class="admin-hsk-cover-label">${isVi ? "URL ảnh bìa" : "封面 URL"}</label>
+        <input
+          class="admin-hsk-cover-url"
+          type="text"
+          data-admin-hsk-cover-url="${escapeAttr(card.level)}"
+          value="${escapeAttr(coverUrl)}"
+          placeholder="${escapeAttr(getDefaultHskLevelCoverUrl(card.level))}"
+        />
+        <label class="admin-hsk-cover-file-btn">
+          <input type="file" accept="image/*" data-admin-hsk-cover-file="${escapeAttr(card.level)}" hidden />
+          ${isVi ? "Chọn ảnh từ máy" : "从本机选择图片"}
+        </label>
+        <button class="admin-hsk-cover-reset" type="button" data-admin-hsk-cover-reset="${escapeAttr(card.level)}">
+          ${isVi ? "Dùng ảnh mặc định" : "使用默认图"}
+        </button>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <p class="admin-content-subtitle">${isVi
+      ? "Mỗi cấp HSK có thể đặt ảnh bìa riêng cho card chọn cấp độ. Nhập đường dẫn (ví dụ assets/hsk1-cover.png) hoặc chọn ảnh từ máy, rồi bấm Lưu ảnh bìa."
+      : "每个 HSK 等级可单独设置封面。输入路径或选择本地图片后点击保存封面。"}</p>
+    <div class="admin-hsk-cover-grid">${cards}</div>
+  `;
+}
+
+function renderAdminContentHskLocksSectionHTML(isVi) {
+  const level = state.adminContentLevel || "HSK2";
+  const locksMap = state.adminContentLocks || {};
+  const lessons = hskLevels[level] || [];
+  const levelTabs = Object.keys(hskLevels).map((levelKey) => `
+    <button class="admin-content-level-btn ${levelKey === level ? "active" : ""}" type="button" data-admin-content-level="${levelKey}">
+      ${levelKey}
+    </button>
+  `).join("");
+  const lockedInLevel = lessons.filter((lesson) => Number(locksMap[lesson.id]?.freeItemLimit || 0) > 0).length;
+  const rows = lessons.map((lesson) => {
+    const freeItemLimit = Math.max(0, Number(locksMap[lesson.id]?.freeItemLimit || 0));
+    return `
+      <tr>
+        <td>${lesson.no}</td>
+        <td><code>${escapeAttr(lesson.id)}</code></td>
+        <td>${escapeAttr(isVi ? (lesson.titleVi || lesson.title) : (lesson.titleZh || lesson.title))}</td>
+        <td>
+          <input
+            class="admin-content-limit-input"
+            type="number"
+            min="0"
+            step="1"
+            placeholder="${isVi ? "0 = không giới hạn" : "0 = 不限"}"
+            data-admin-content-limit="${escapeAttr(lesson.id)}"
+            value="${freeItemLimit > 0 ? freeItemLimit : ""}"
+          />
+        </td>
+        <td>
+          <input
+            class="admin-content-limit-input"
+            type="number"
+            min="0"
+            step="1"
+            placeholder="${isVi ? "VD: 8" : "例：8"}"
+            value="${freeItemLimit > 0 ? freeItemLimit : ""}"
+            data-admin-content-limit="${escapeAttr(lesson.id)}"
+          />
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  return `
+    <p class="admin-content-subtitle">${isVi
+      ? `Nhập số thứ tự câu cuối cùng tài khoản Free được làm (ví dụ 8 = Free làm đến hết câu 8, bấm Tiếp sang câu 9 sẽ bị chặn). Để trống hoặc nhập 0 = không giới hạn. (${lockedInLevel}/${lessons.length} bài đang giới hạn tại ${level})`
+      : `输入 Free 用户可做到第几题（例如 8 = 做到第 8 题，点下一题会拦截）。留空或 0 = 不限。（${level}：${lockedInLevel}/${lessons.length}）`}</p>
+    <div class="admin-content-level-tabs">${levelTabs}</div>
+    <div class="admin-table-wrap">
+      <table class="admin-users-table admin-content-table">
+        <thead>
+          <tr>
+            <th>${isVi ? "Bài" : "课"}</th>
+            <th>ID</th>
+            <th>${isVi ? "Tiêu đề" : "标题"}</th>
+            <th>${isVi ? "Miễn phí đến câu" : "免费到第几题"}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows || `<tr><td colspan="4" class="admin-empty">${isVi ? "Không có bài học." : "暂无课程。"}</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+    <div class="admin-content-actions">
+      <button id="adminLockAllContentBtn" type="button">${isVi ? "Giới hạn tất cả đến câu 8" : "本等级全部限到第 8 题"}</button>
+      <button id="adminUnlockAllContentBtn" type="button">${isVi ? "Bỏ giới hạn cấp này" : "取消本等级限制"}</button>
+    </div>
+  `;
+}
+
+function renderAdminContentHskSectionHTML(isVi) {
+  const panel = state.adminContentHskPanel || "locks";
+  const panelTabs = `
+    <div class="admin-content-hsk-tabs">
+      <button class="admin-content-hsk-tab ${panel === "locks" ? "active" : ""}" type="button" data-admin-content-hsk-panel="locks">
+        ${isVi ? "Giới hạn Free" : "Free 限制"}
+      </button>
+      <button class="admin-content-hsk-tab ${panel === "covers" ? "active" : ""}" type="button" data-admin-content-hsk-panel="covers">
+        ${isVi ? "Ảnh bìa cấp độ" : "等级封面"}
+      </button>
+    </div>
+  `;
+  return `${panelTabs}${panel === "covers" ? renderAdminHskLevelCoversHTML(isVi) : renderAdminContentHskLocksSectionHTML(isVi)}`;
+}
+
+function renderAdminContentDailySectionHTML(isVi) {
+  const locksMap = state.adminContentDailyLocks || {};
+  const lockedCount = dailyThemes.filter((theme) => locksMap[theme.id]?.lockedForFree === true || Number(locksMap[theme.id]?.freeItemLimit || 0) > 0).length;
+  const rows = dailyThemes.map((theme, index) => {
+    const lockConfig = locksMap[theme.id] || { lockedForFree: false, freeItemLimit: 0 };
+    const locked = lockConfig.lockedForFree === true;
+    const freeItemLimit = Math.max(0, Number(lockConfig.freeItemLimit || 0));
+    const cardMeta = getDailyThemeCardMeta(theme);
+    return `
+      <tr>
+        <td>${index + 1}</td>
+        <td><code>${escapeAttr(theme.id)}</code></td>
+        <td>${escapeAttr(isVi ? cardMeta.title : (theme.zh || cardMeta.title))}</td>
+        <td>
+          <input
+            class="admin-content-limit-input"
+            type="number"
+            min="0"
+            step="1"
+            placeholder="${isVi ? "VD: 8" : "例：8"}"
+            value="${freeItemLimit > 0 ? freeItemLimit : ""}"
+            data-admin-content-daily-limit="${escapeAttr(theme.id)}"
+          />
+        </td>
+        <td>
+          <label class="admin-content-lock-toggle">
+            <input type="checkbox" data-admin-content-daily-lock="${escapeAttr(theme.id)}" ${locked ? "checked" : ""} />
+            <span>${locked ? (isVi ? "Khóa Free" : "锁定 Free") : (isVi ? "Mở Free" : "Free 可用")}</span>
+          </label>
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  return `
+    <p class="admin-content-subtitle">${isVi
+      ? `Chủ đề giao tiếp được bật khóa sẽ không mở với khách chưa đăng nhập và tài khoản gói Free. (${lockedCount}/${dailyThemes.length} chủ đề đang khóa)`
+      : `启用的交际主题将对 Free 用户锁定。（${lockedCount}/${dailyThemes.length}）`}</p>
+    <div class="admin-table-wrap">
+      <table class="admin-users-table admin-content-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>ID</th>
+            <th>${isVi ? "Chủ đề" : "主题"}</th>
+            <th>${isVi ? "Trạng thái Free" : "Free 状态"}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows || `<tr><td colspan="4" class="admin-empty">${isVi ? "Không có chủ đề." : "暂无主题。"}</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+    <div class="admin-content-actions">
+      <button id="adminLockAllContentBtn" type="button">${isVi ? "Khóa tất cả chủ đề" : "锁定全部主题"}</button>
+      <button id="adminUnlockAllContentBtn" type="button">${isVi ? "Mở khóa tất cả chủ đề" : "解锁全部主题"}</button>
+    </div>
+  `;
+}
+
+function renderAdminContentPanelHTML() {
+  const isVi = state.lang === "vi";
+  const contentModule = state.adminContentModule || "hsk";
+  const hskPanel = state.adminContentHskPanel || "locks";
+  const moduleTabs = `
+    <button class="admin-content-module-btn ${contentModule === "hsk" ? "active" : ""}" type="button" data-admin-content-module="hsk">
+      ${isVi ? "Khóa HSK" : "HSK 课程"}
+    </button>
+    <button class="admin-content-module-btn ${contentModule === "daily" ? "active" : ""}" type="button" data-admin-content-module="daily">
+      ${isVi ? "Tiếng Trung giao tiếp" : "交际汉语"}
+    </button>
+  `;
+  const saveBtn = contentModule === "hsk" && hskPanel === "covers"
+    ? `<button id="adminSaveHskLevelCoversBtn" class="admin-add-user" type="button">${isVi ? "Lưu ảnh bìa" : "保存封面"}</button>`
+    : `<button id="adminSaveContentLocksBtn" class="admin-add-user" type="button">${isVi ? "Lưu cấu hình" : "保存配置"}</button>`;
+
+  return `
+    <section class="admin-content-panel">
+      <div class="admin-content-header">
+        <div>
+          <h2>${contentModule === "hsk" && hskPanel === "covers"
+      ? (isVi ? "Ảnh bìa cấp độ HSK" : "HSK 等级封面")
+      : (isVi ? "Khóa nội dung cho gói Free" : "为 Free 套餐锁定内容")}</h2>
+          <p>${contentModule === "hsk" && hskPanel === "covers"
+      ? (isVi
+        ? "Tùy chỉnh ảnh nền cho từng card HSK1–HSK6 trên màn hình chọn cấp độ."
+        : "自定义 HSK1–HSK6 等级卡片的封面背景。")
+      : (isVi
+        ? "Chọn bài HSK hoặc chủ đề giao tiếp sẽ bị khóa với khách chưa đăng nhập và tài khoản gói Free. Người dùng Pro và Admin vẫn truy cập đầy đủ."
+        : "选择要对未登录用户和 Free 用户锁定的 HSK 课程或交际主题。Pro 和管理员仍可访问全部。")}</p>
+        </div>
+        ${saveBtn}
+      </div>
+      <p class="admin-content-status">${escapeAttr(state.adminContentStatus || "")}</p>
+      <div class="admin-content-module-tabs">${moduleTabs}</div>
+      ${contentModule === "daily" ? renderAdminContentDailySectionHTML(isVi) : renderAdminContentHskSectionHTML(isVi)}
+    </section>
+  `;
 }
 
 function slotPinyinLength(word) {
@@ -1186,6 +2249,28 @@ function scrollAppToTop() {
   });
 }
 
+function logoutCurrentUser() {
+  if (BACKEND_DISABLED) {
+    showToast(BACKEND_DISABLED_MESSAGE);
+    return false;
+  }
+  if (!state.user) return false;
+  state.user = null;
+  saveState();
+  renderChrome();
+  if (state.screen === "account") {
+    setScreen("home");
+    renderHome();
+  } else if (state.screen === "home") {
+    renderHome();
+  } else if (state.screen === "course") {
+    renderCourse();
+  } else if (state.screen === "vocab") {
+    renderVocab();
+  }
+  return true;
+}
+
 function navigatePrimaryTab(target) {
   state.fromRoadmap = false;
   state.dailyPendingThemeId = "";
@@ -1214,11 +2299,7 @@ function navigatePrimaryTab(target) {
     setScreen("subscriptions");
   } else if (target === "account") {
     if (BACKEND_DISABLED) return;
-    if (state.user) {
-      showAccountPanel();
-    } else {
-      showModal("login");
-    }
+    openAccountScreen();
   }
 
   scrollAppToTop();
@@ -1228,11 +2309,12 @@ function navigatePrimaryTab(target) {
 function setScreen(name) {
   state.screen = name;
   Object.entries(screens).forEach(([key, node]) => node.classList.toggle("hidden", key !== name));
-  $("#backBtn").classList.toggle("hidden", name === "home" || name === "course" || name === "admin" || name === "vocab" || name === "subscriptions");
+  $("#backBtn")?.classList.toggle("hidden", name === "home" || name === "course" || name === "admin" || name === "vocab" || name === "subscriptions" || name === "account");
 
-  // Render the global footer outside the screen boundaries
-  renderGlobalFooter();
-  $("#globalFooter")?.classList.toggle("hidden", name === "subscriptions");
+  // Footer tạm ẩn
+  // renderGlobalFooter();
+  // $("#globalFooter")?.classList.toggle("hidden", name === "subscriptions");
+  // $("#globalFooter")?.classList.toggle("footer-hide-on-mobile", name === "account");
 
   const appNode = $("#app");
   if (appNode) {
@@ -1273,7 +2355,7 @@ function setScreen(name) {
   const bottomVocab = $("#bottomNavVocabBtn");
   const bottomSubscriptions = $("#bottomNavSubscriptionsBtn");
   const bottomAccount = $("#bottomNavAccountBtn");
-  const showBottomNav = ["home", "course", "vocab", "subscriptions"].includes(name);
+  const showBottomNav = ["home", "course", "vocab", "account"].includes(name);
 
   if (bottomNav) {
     bottomNav.classList.toggle("hidden", !showBottomNav);
@@ -1285,7 +2367,7 @@ function setScreen(name) {
     bottomDaily.classList.toggle("active", name === "course" && state.module === "daily");
     bottomVocab.classList.toggle("active", name === "vocab");
     bottomSubscriptions.classList.toggle("active", name === "subscriptions");
-    bottomAccount.classList.remove("active");
+    bottomAccount.classList.toggle("active", name === "account");
     bottomAccount.classList.toggle("hidden", BACKEND_DISABLED);
   }
 }
@@ -1293,8 +2375,10 @@ function setScreen(name) {
 function renderChrome() {
   const isVi = state.lang === "vi";
   document.documentElement.lang = state.lang === "vi" ? "vi" : "zh-CN";
-  $("#brandSubtitle").textContent = t("brandSubtitle");
-  $("#reviewBtn").textContent = t("review");
+  const brandSubtitle = $("#brandSubtitle");
+  if (brandSubtitle) brandSubtitle.textContent = t("brandSubtitle");
+  const reviewBtn = $("#reviewBtn");
+  if (reviewBtn) reviewBtn.textContent = t("review");
   const loginBtn = $("#loginBtn");
   const registerBtn = $("#registerBtn");
   const mobileLoginBtn = $("#mobileLoginBtn");
@@ -1322,12 +2406,10 @@ function renderChrome() {
   if (navHskBtn) navHskBtn.textContent = t("hskTitle");
   if (navDailyBtn) navDailyBtn.textContent = t("dailyTitle");
   if (navVocabBtn) navVocabBtn.textContent = t("vocab");
-  if (navSubscriptionsBtn) navSubscriptionsBtn.textContent = t("subscriptions");
 
   if (mobileHskBtn) mobileHskBtn.innerHTML = `${t("hskTitle")} <span class="arrow">›</span>`;
   if (mobileDailyBtn) mobileDailyBtn.innerHTML = `${t("dailyTitle")} <span class="arrow">›</span>`;
   if (mobileVocabBtn) mobileVocabBtn.innerHTML = `${t("vocab")} <span class="arrow">›</span>`;
-  if (mobileSubscriptionsBtn) mobileSubscriptionsBtn.innerHTML = `${t("subscriptions")} <span class="arrow">›</span>`;
 
   if (bottomHomeBtn) {
     bottomHomeBtn.querySelector(".mobile-bottom-nav-label").textContent = t("homeTab");
@@ -1340,9 +2422,6 @@ function renderChrome() {
   }
   if (bottomVocabBtn) {
     bottomVocabBtn.querySelector(".mobile-bottom-nav-label").textContent = t("vocab");
-  }
-  if (bottomSubscriptionsBtn) {
-    bottomSubscriptionsBtn.querySelector(".mobile-bottom-nav-label").textContent = isVi ? "Gói" : "订阅";
   }
   if (bottomAccountBtn) {
     bottomAccountBtn.querySelector(".mobile-bottom-nav-label").textContent = isVi ? "Cá nhân" : "个人";
@@ -1359,7 +2438,7 @@ function renderChrome() {
   }
   const menuToggleBtn = $("#menuToggleBtn");
   if (menuToggleBtn) {
-    menuToggleBtn.classList.toggle("hidden", BACKEND_DISABLED || !canViewAdmin);
+    menuToggleBtn.classList.add("hidden");
   }
   [loginBtn, registerBtn, mobileLoginBtn, mobileRegisterBtn, sidebarLoginBtn, sidebarRegisterBtn].forEach((button) => {
     if (!button) return;
@@ -1601,41 +2680,36 @@ async function loadAdminUsers() {
   renderAdmin();
 }
 
-function renderAdmin() {
-  const isVi = state.lang === "vi";
-  if (!isAdminUser()) {
-    screens.admin.innerHTML = `
-      <section class="admin-login-screen">
-        <form class="admin-login-card" id="adminLoginForm">
-          <div class="admin-login-logo">中</div>
-          <h1>${isVi ? "Đăng nhập Admin" : "管理员登录"}</h1>
-          <p>${isVi ? "Chỉ tài khoản có quyền admin mới có thể truy cập trang quản trị." : "只有管理员账户可以访问控制台。"}</p>
-          <label>
-            <span>Email</span>
-            <input id="adminLoginEmail" type="email" placeholder="admin@huamei.vn" required />
-          </label>
-          <label>
-            <span>${isVi ? "Mật khẩu" : "密码"}</span>
-            <input id="adminLoginPassword" type="password" placeholder="••••••••" required />
-          </label>
-          <p class="admin-login-message ${state.adminStatus ? "error" : ""}">${escapeAttr(state.adminStatus || "")}</p>
-          <button type="submit">${isVi ? "Đăng nhập quản trị" : "登录管理后台"}</button>
-        </form>
-      </section>
-    `;
-    return;
-  }
+function getAdminUserPlan(user) {
+  if (user?.role === "admin" || isActivePremiumUser(user)) return "PREMIUM";
+  return "FREE";
+}
 
-  const totalUsers = state.adminUsers.length;
-  const proUsers = state.adminUsers.filter((user) => user.role === "admin" || isActivePremiumUser(user)).length;
-  const vipRate = totalUsers > 0 ? Math.round((proUsers / totalUsers) * 1000) / 10 : 24.8;
-  const adminTab = state.adminTab || "users";
-  const rows = state.adminUsers.map((user, index) => {
-    const initials = String(user.fullName || user.email || "U").split(/\s+/).map(part => part[0]).join("").slice(0, 2).toUpperCase();
+function getFilteredAdminUsers() {
+  const query = normalizeLatin(state.adminUserSearch.trim());
+  const levelFilter = state.adminUserLevelFilter || "all";
+  const planFilter = state.adminUserPlanFilter || "all";
+
+  return state.adminUsers.filter((user) => {
+    const level = user.currentLevel || user.level || "HSK2";
+    const plan = getAdminUserPlan(user);
+    if (levelFilter !== "all" && level !== levelFilter) return false;
+    if (planFilter !== "all" && plan !== planFilter) return false;
+    if (!query) return true;
+    const name = normalizeLatin(user.fullName || "");
+    const email = normalizeLatin(user.email || "");
+    const id = normalizeLatin(String(user.id || ""));
+    return name.includes(query) || email.includes(query) || id.includes(query);
+  });
+}
+
+function buildAdminUserRowsHTML(users, isVi) {
+  return users.map((user, index) => {
+    const initials = String(user.fullName || user.email || "U").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
     const avatar = index % 3 === 0 ? `assets/review_user_${(index % 3) + 1}.png` : "";
     const currentLevel = user.currentLevel || user.level || "HSK2";
     const hasPremium = isActivePremiumUser(user);
-    const plan = hasPremium ? "PREMIUM" : "FREE";
+    const plan = getAdminUserPlan(user);
     const displayDuration = hasPremium ? formatAdminDate(user.premiumUntil) : "N/A";
     const duration = user.isPremium ? (isVi ? "Không giới hạn" : "不限") : index % 2 === 0 ? "90 ngày" : "N/A";
     return `
@@ -1674,6 +2748,67 @@ function renderAdmin() {
       </tr>
     `;
   }).join("");
+}
+
+function updateAdminUsersList() {
+  if (state.screen !== "admin" || (state.adminTab || "users") !== "users") return;
+  const isVi = state.lang === "vi";
+  const filteredUsers = getFilteredAdminUsers();
+  const tbody = screens.admin?.querySelector(".admin-users-table tbody");
+  const footerText = screens.admin?.querySelector(".admin-table-footer > span");
+  if (!tbody) {
+    renderAdmin();
+    return;
+  }
+  tbody.innerHTML = filteredUsers.length > 0
+    ? buildAdminUserRowsHTML(filteredUsers, isVi)
+    : `<tr><td colspan="6" class="admin-empty">${isVi ? "Không có người dùng phù hợp bộ lọc." : "没有符合筛选条件的用户。"}</td></tr>`;
+  if (footerText) {
+    const total = state.adminUsers.length;
+    const shown = filteredUsers.length;
+    footerText.textContent = isVi
+      ? `Hiển thị ${shown > 0 ? 1 : 0} - ${shown} trên ${total} kết quả`
+      : `显示 ${shown} / ${total} 个结果`;
+  }
+}
+
+function renderAdmin() {
+  const isVi = state.lang === "vi";
+  if (!isAdminUser()) {
+    screens.admin.innerHTML = `
+      <section class="admin-login-screen">
+        <form class="admin-login-card" id="adminLoginForm">
+          <div class="admin-login-logo">中</div>
+          <h1>${isVi ? "Đăng nhập Admin" : "管理员登录"}</h1>
+          <p>${isVi ? "Chỉ tài khoản có quyền admin mới có thể truy cập trang quản trị." : "只有管理员账户可以访问控制台。"}</p>
+          <label>
+            <span>Email</span>
+            <input id="adminLoginEmail" type="email" placeholder="admin@huamei.vn" required />
+          </label>
+          <label>
+            <span>${isVi ? "Mật khẩu" : "密码"}</span>
+            <input id="adminLoginPassword" type="password" placeholder="••••••••" required />
+          </label>
+          <p class="admin-login-message ${state.adminStatus ? "error" : ""}">${escapeAttr(state.adminStatus || "")}</p>
+          <button type="submit">${isVi ? "Đăng nhập quản trị" : "登录管理后台"}</button>
+        </form>
+      </section>
+    `;
+    return;
+  }
+
+  const totalUsers = state.adminUsers.length;
+  const proUsers = state.adminUsers.filter((user) => user.role === "admin" || isActivePremiumUser(user)).length;
+  const vipRate = totalUsers > 0 ? Math.round((proUsers / totalUsers) * 1000) / 10 : 24.8;
+  const adminTab = state.adminTab || "users";
+  const adminMainClass = [
+    adminTab === "subscriptions" ? "admin-main--subscriptions" : "",
+    adminTab === "content" ? "admin-main--content" : "",
+  ].filter(Boolean).join(" ");
+  const filteredUsers = getFilteredAdminUsers();
+  const levelFilter = state.adminUserLevelFilter || "all";
+  const planFilter = state.adminUserPlanFilter || "all";
+  const rows = buildAdminUserRowsHTML(filteredUsers, isVi);
 
   screens.admin.innerHTML = `
     <div class="admin-console">
@@ -1686,13 +2821,13 @@ function renderAdmin() {
           <button type="button"><span>▦</span>Dashboard</button>
           <button id="adminUsersTabBtn" class="${adminTab === "users" ? "active" : ""}" type="button"><span>👥</span>User Management</button>
           <button id="adminSubscriptionsTabBtn" class="${adminTab === "subscriptions" ? "active" : ""}" type="button"><span>▣</span>Subscription Plans</button>
-          <button type="button"><span>▤</span>Content Management</button>
+          <button id="adminContentTabBtn" class="${adminTab === "content" ? "active" : ""}" type="button"><span>▤</span>Content Management</button>
           <button type="button"><span>⚙</span>Settings</button>
         </nav>
         <button class="admin-new-course" type="button">＋ New Course</button>
       </aside>
 
-      <main class="admin-main ${adminTab === "subscriptions" ? "admin-main--subscriptions" : ""}">
+      <main class="admin-main ${adminMainClass}">
         <header class="admin-topbar">
           <div class="admin-search">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -1716,12 +2851,18 @@ function renderAdmin() {
         <section class="admin-dashboard-grid">
           <div class="admin-filter-panel">
             <div class="admin-filter-search">
-              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
-              <input type="text" placeholder="${isVi ? "Tìm theo tên, email hoặc ID..." : "按姓名、邮箱或 ID 搜索..."}" />
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
+              <input id="adminUserSearchInput" type="text" value="${escapeAttr(state.adminUserSearch)}" placeholder="${isVi ? "Tìm theo tên, email hoặc ID..." : "按姓名、邮箱或 ID 搜索..."}" />
             </div>
-            <button type="button">${isVi ? "Tất cả cấp độ" : "所有等级"}</button>
-            <button type="button">${isVi ? "Tất cả gói" : "所有套餐"}</button>
-            <button type="button" class="admin-filter-icon">≡</button>
+            <select id="adminUserLevelFilter" class="admin-filter-select" aria-label="${isVi ? "Lọc theo cấp độ" : "按等级筛选"}">
+              <option value="all" ${levelFilter === "all" ? "selected" : ""}>${isVi ? "Tất cả cấp độ" : "所有等级"}</option>
+              ${Object.keys(hskLevels).map((level) => `<option value="${level}" ${levelFilter === level ? "selected" : ""}>${level}</option>`).join("")}
+            </select>
+            <select id="adminUserPlanFilter" class="admin-filter-select" aria-label="${isVi ? "Lọc theo gói" : "按套餐筛选"}">
+              <option value="all" ${planFilter === "all" ? "selected" : ""}>${isVi ? "Tất cả gói" : "所有套餐"}</option>
+              <option value="FREE" ${planFilter === "FREE" ? "selected" : ""}>Free</option>
+              <option value="PREMIUM" ${planFilter === "PREMIUM" ? "selected" : ""}>Premium</option>
+            </select>
           </div>
           <aside class="admin-vip-card">
             <span>${isVi ? "Tỷ lệ chuyển đổi VIP" : "VIP 转化率"}</span>
@@ -1744,12 +2885,12 @@ function renderAdmin() {
                 </tr>
               </thead>
               <tbody>
-                ${rows || `<tr><td colspan="6" class="admin-empty">${escapeAttr(state.adminStatus || (isVi ? "Chưa có dữ liệu người dùng." : "暂无用户数据。"))}</td></tr>`}
+                ${rows || `<tr><td colspan="6" class="admin-empty">${escapeAttr(filteredUsers.length === 0 && state.adminUsers.length > 0 ? (isVi ? "Không có người dùng phù hợp bộ lọc." : "没有符合筛选条件的用户。") : (state.adminStatus || (isVi ? "Chưa có dữ liệu người dùng." : "暂无用户数据。")))}</td></tr>`}
               </tbody>
             </table>
           </div>
           <footer class="admin-table-footer">
-            <span>${isVi ? `Hiển thị 1 - ${Math.max(totalUsers, 1)} trên ${Math.max(totalUsers, 0)} kết quả` : `显示 ${totalUsers} 个结果`}</span>
+            <span>${isVi ? `Hiển thị ${filteredUsers.length > 0 ? 1 : 0} - ${filteredUsers.length} trên ${totalUsers} kết quả` : `显示 ${filteredUsers.length} / ${totalUsers} 个结果`}</span>
             <div><button>‹</button><button class="active">1</button><button>2</button><button>3</button><span>...</span><button>›</button></div>
           </footer>
         </section>
@@ -1761,6 +2902,8 @@ function renderAdmin() {
             title="Quản lý gói đăng ký"
             loading="lazy"></iframe>
         </section>
+
+        ${adminTab === "content" ? renderAdminContentPanelHTML() : ""}
       </main>
     </div>
   `;
@@ -1788,12 +2931,12 @@ function showModal(type) {
         ${!isLogin ? `
         <div class="form-group">
           <label for="authName">${isVi ? "Họ và tên" : "姓名"}</label>
-          <input type="text" id="authName" placeholder="${isVi ? "Nguyễn Văn A" : "张三"}" required />
+          <input type="text" id="authName" placeholder="${isVi ? "" : "张三"}" required />
         </div>
         ` : ""}
         <div class="form-group">
           <label for="authEmail">Email</label>
-          <input type="email" id="authEmail" placeholder="example@gmail.com" required />
+          <input type="email" id="authEmail" placeholder="" required />
         </div>
         <div class="form-group">
           <label for="authPassword">${isVi ? "Mật khẩu" : "密码"}</label>
@@ -1846,7 +2989,10 @@ function showModal(type) {
       });
       state.user = data.user;
       saveState();
-      renderChrome();
+      loadContentLocks().then(() => {
+        renderChrome();
+        if (state.screen === "course") renderCourse();
+      });
       message.textContent = isLogin ? (isVi ? "Đăng nhập thành công." : "登录成功。") : (isVi ? "Đăng ký thành công." : "注册成功。");
       message.classList.add("success");
       setTimeout(() => modalDiv.remove(), 500);
@@ -1860,43 +3006,187 @@ function showModal(type) {
   };
 }
 
+function openAccountScreen() {
+  if (!state.user) {
+    showModal("login");
+    return;
+  }
+  renderAccount();
+  setScreen("account");
+}
+
 function showAccountPanel() {
-  if (!state.user) return;
+  openAccountScreen();
+}
+
+function getAccountAvatarUrl() {
+  return state.user?.avatarUrl || ACCOUNT_DEFAULT_AVATAR;
+}
+
+function resizeAccountAvatarFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(state.lang === "vi" ? "Không thể đọc file ảnh." : "无法读取图片文件。"));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error(state.lang === "vi" ? "File ảnh không hợp lệ." : "图片文件无效。"));
+      image.onload = () => {
+        const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
+        const sx = Math.max(0, Math.round((image.naturalWidth - sourceSize) / 2));
+        const sy = Math.max(0, Math.round((image.naturalHeight - sourceSize) / 2));
+        const canvas = document.createElement("canvas");
+        canvas.width = ACCOUNT_AVATAR_SIZE;
+        canvas.height = ACCOUNT_AVATAR_SIZE;
+        const context = canvas.getContext("2d");
+        context.drawImage(image, sx, sy, sourceSize, sourceSize, 0, 0, ACCOUNT_AVATAR_SIZE, ACCOUNT_AVATAR_SIZE);
+        resolve(canvas.toDataURL("image/jpeg", 0.86));
+      };
+      image.src = String(reader.result || "");
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function persistAccountProfile() {
+  if (BACKEND_DISABLED || !state.user?.id) return null;
+  const data = await apiRequest(`/api/users/${encodeURIComponent(state.user.id)}/profile`, {
+    method: "PATCH",
+    headers: { "X-User-Id": state.user.id },
+    body: JSON.stringify({
+      fullName: state.user.fullName,
+      email: state.user.email,
+      currentLevel: state.user.currentLevel || state.level || "HSK2",
+      avatarUrl: state.user.avatarUrl || "",
+    }),
+  });
+  if (data.user) {
+    state.user = { ...state.user, ...data.user };
+    if (state.user.currentLevel) state.level = state.user.currentLevel;
+    saveState();
+  }
+  return data;
+}
+
+async function updateAccountAvatar(file, input) {
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    showToast(state.lang === "vi" ? "Vui lòng chọn file ảnh." : "请选择图片文件。");
+    return;
+  }
+  if (file.size > MAX_ACCOUNT_AVATAR_SOURCE_BYTES) {
+    showToast(state.lang === "vi" ? "Ảnh quá lớn. Vui lòng chọn ảnh dưới 5MB." : "图片太大，请选择 5MB 以下的图片。");
+    if (input) input.value = "";
+    return;
+  }
+
+  const previousAvatarUrl = state.user.avatarUrl || "";
+  try {
+    const previewUrl = await resizeAccountAvatarFile(file);
+    state.user.avatarUrl = previewUrl;
+    saveState();
+    const avatarImg = document.getElementById("accountAvatarImage");
+    if (avatarImg) avatarImg.src = previewUrl;
+    if (!BACKEND_DISABLED && state.user?.id) {
+      const data = await apiRequest(`/api/users/${encodeURIComponent(state.user.id)}/avatar`, {
+        method: "PATCH",
+        headers: { "X-User-Id": state.user.id },
+        body: JSON.stringify({ avatarDataUrl: previewUrl }),
+      });
+      if (data.user) {
+        state.user = { ...state.user, ...data.user };
+      } else if (data.avatarUrl) {
+        state.user.avatarUrl = data.avatarUrl;
+      }
+      saveState();
+      if (avatarImg) avatarImg.src = getAccountAvatarUrl();
+    }
+    renderChrome();
+    showToast(state.lang === "vi" ? "Đã cập nhật ảnh đại diện" : "头像已更新");
+  } catch (error) {
+    if (!BACKEND_DISABLED && state.user) {
+      state.user.avatarUrl = previousAvatarUrl;
+      saveState();
+      const avatarImg = document.getElementById("accountAvatarImage");
+      if (avatarImg) avatarImg.src = getAccountAvatarUrl();
+    }
+    showToast(error.message || (state.lang === "vi" ? "Không thể cập nhật ảnh đại diện." : "无法更新头像。"));
+  } finally {
+    if (input) input.value = "";
+  }
+}
+
+function formatAccountJoinedLabel(value, isVi) {
+  if (!value) return isVi ? "Chưa có dữ liệu" : "暂无数据";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return isVi ? "Chưa có dữ liệu" : "暂无数据";
+  if (isVi) {
+    return `Tháng ${date.getMonth() + 1}, ${date.getFullYear()}`;
+  }
+  return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long" }).format(date);
+}
+
+function formatAccountLevelLabel(level, isVi) {
+  const normalized = String(level || "HSK2").replace(/^HSK/i, "HSK ");
+  return isVi ? `Cấp độ ${normalized}` : normalized;
+}
+
+function renderAccount() {
+  if (!state.user || !screens.account) return;
   const isVi = state.lang === "vi";
-  const accountDiv = document.createElement("div");
-  accountDiv.id = "accountPanel";
-  accountDiv.className = "account-panel-overlay";
   const displayName = state.user.fullName || state.user.email || t("account");
   const email = state.user.email || "";
   const joinedDate = state.user.createdAt ? formatDateTime(state.user.createdAt) : (isVi ? "Chưa có dữ liệu" : "暂无数据");
-  const currentLevel = state.level || "HSK3";
+  const joinedLabel = formatAccountJoinedLabel(state.user.createdAt, isVi);
+  const currentLevel = state.user.currentLevel || state.level || "HSK2";
+  const hasPremium = hasPremiumAccess();
+  const avatarUrl = getAccountAvatarUrl();
+  const studyDays = Math.max(1, Math.floor((Date.now() - new Date(state.user.createdAt || Date.now()).getTime()) / 86400000) + 1);
+  const levelOptions = Object.keys(hskLevels).map((level) => `
+    <option value="${level}" ${level === currentLevel ? "selected" : ""}>${formatAccountLevelLabel(level, isVi)}</option>
+  `).join("");
 
-  accountDiv.innerHTML = `
-    <div class="account-panel">
-      <button class="account-panel-close" id="closeAccountPanel" type="button" aria-label="${isVi ? "Đóng" : "关闭"}">&times;</button>
+  setScreenWithDesktopShell("account", `
+    <div class="account-layout">
+      <header class="account-mobile-header">
+        <button type="button" class="account-mobile-globe" id="accountMobileGlobeBtn" aria-label="${isVi ? "Đổi ngôn ngữ" : "切换语言"}">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          </svg>
+        </button>
+        <h1>${isVi ? "Hồ sơ cá nhân" : "个人资料"}</h1>
+        <button type="submit" form="accountForm" class="account-mobile-save">${isVi ? "Lưu" : "保存"}</button>
+      </header>
 
-      <div class="account-panel-grid">
+      <div class="account-panel account-mobile-stack">
         <aside class="account-profile-card">
           <div class="account-avatar-wrap">
-            <img src="assets/review_user_1.png" alt="${escapeAttr(displayName)}" />
-            <span class="account-pro-badge">
-              <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor">
-                <path d="M12 2l2.4 5.2 5.6.7-4.1 3.9 1 5.6-4.9-2.7-4.9 2.7 1-5.6L4 7.9l5.6-.7L12 2z" />
+            <img id="accountAvatarImage" src="${escapeAttr(avatarUrl)}" alt="${escapeAttr(displayName)}" />
+            <input id="accountAvatarInput" type="file" accept="image/*" hidden />
+            <button type="button" class="account-avatar-edit" id="accountAvatarEditBtn" aria-label="${isVi ? "Đổi ảnh đại diện" : "更换头像"}">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
               </svg>
-            </span>
+            </button>
+            ${hasPremium ? `
+              <span class="account-pro-badge">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true">
+                  <path d="M12 2l2.4 5.2 5.6.7-4.1 3.9 1 5.6-4.9-2.7-4.9 2.7 1-5.6L4 7.9l5.6-.7L12 2z" />
+                </svg>
+              </span>
+            ` : ""}
           </div>
           <h3>${escapeAttr(displayName)}</h3>
           <p>${isVi ? "Học viên tích cực" : "积极学员"}</p>
           <div class="account-badges">
-            <span>${escapeAttr(currentLevel)}</span>
-            <span>${isVi ? "Thành viên Pro" : "Pro 会员"}</span>
+            <span>${escapeAttr(currentLevel.replace(/^HSK/i, "HSK "))}</span>
+            <span class="account-badge-pro">${hasPremium ? (isVi ? "Thành viên Pro" : "Pro 会员") : (isVi ? "Gói Free" : "Free 套餐")}</span>
           </div>
           <div class="account-streak">
             <div>
               <small>${isVi ? "Ngày học" : "学习天数"}</small>
-              <strong>124 ${isVi ? "Ngày" : "天"}</strong>
+              <strong>${studyDays} ${isVi ? "Ngày" : "天"}</strong>
             </div>
-            <span>
+            <span class="account-streak-flame" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                 <path d="M13 2S5 9 5 15a7 7 0 0 0 14 0c0-3-2-5-4-7 .2 2-1 3-2 3 1-4 0-7 0-9z" />
               </svg>
@@ -1904,8 +3194,36 @@ function showAccountPanel() {
           </div>
         </aside>
 
+        ${hasPremium ? "" : `
+          <section class="account-mobile-upgrade">
+            <p>${isVi ? "Mở khóa tất cả bài học và luyện tập chuyên sâu với HuaMei Pro" : "升级 HuaMei Pro，解锁全部课程与深度学习练习"}</p>
+            <button type="button" class="account-mobile-upgrade-btn account-upgrade-btn">
+              ${isVi ? "Nâng cấp ngay" : "立即升级"}
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/>
+              </svg>
+            </button>
+          </section>
+        `}
+
+                ${hasPremium ? "" : `
+          <section class="account-upgrade-banner account-desktop-only">
+            <div>
+              <h2>${isVi ? "Nâng cấp HuaMei Pro" : "升级 HuaMei Pro"}</h2>
+              <p>${isVi ? "Mở khóa tất cả bài học HSK nâng cao, học không giới hạn cùng trợ lý AI và nhận chứng chỉ sau mỗi cấp độ." : "解锁高级 HSK 课程、无限学习 AI 助手，并在每个级别后获得证书。"}</p>
+            </div>
+            <button type="button" class="account-upgrade-btn">
+              ${isVi ? "Nâng cấp ngay" : "立即升级"}
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 12h14" />
+                <path d="M13 6l6 6-6 6" />
+              </svg>
+            </button>
+          </section>
+        `}
+
         <section class="account-info-card">
-          <div class="account-info-header">
+          <div class="account-info-header account-desktop-only">
             <div>
               <span class="account-info-icon">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -1914,6 +3232,11 @@ function showAccountPanel() {
                 </svg>
               </span>
               <h2>${isVi ? "Thông tin cơ bản" : "基本信息"}</h2>
+              <button type="button" class="account-edit-toggle" id="accountEditToggleBtn" aria-label="${isVi ? "Chỉnh sửa thông tin" : "编辑资料"}">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+                </svg>
+              </button>
             </div>
             <em>${isVi ? `Tham gia từ: ${joinedDate}` : `加入时间：${joinedDate}`}</em>
           </div>
@@ -1929,9 +3252,7 @@ function showAccountPanel() {
             </label>
             <label>
               <span>${isVi ? "Cấp độ hiện tại" : "当前等级"}</span>
-              <select id="accountLevelInput">
-                ${Object.keys(hskLevels).map(level => `<option value="${level}" ${level === currentLevel ? "selected" : ""}>${level}</option>`).join("")}
-              </select>
+              <select id="accountLevelInput">${levelOptions}</select>
             </label>
             <label>
               <span>${isVi ? "Ngôn ngữ hiển thị" : "显示语言"}</span>
@@ -1940,56 +3261,29 @@ function showAccountPanel() {
                 <option value="zh" ${state.lang === "zh" ? "selected" : ""}>中文</option>
               </select>
             </label>
-            <div class="account-form-actions">
+            <div class="account-form-actions account-desktop-only is-hidden" hidden>
               <button class="account-save-btn" type="submit">${isVi ? "Lưu thay đổi" : "保存更改"}</button>
               <button class="account-cancel-btn" type="button" id="cancelAccountPanel">${isVi ? "Hủy bỏ" : "取消"}</button>
             </div>
           </form>
+          <p class="account-joined-note">${isVi ? `Tham gia từ: ${joinedLabel}` : `加入时间：${joinedLabel}`}</p>
         </section>
-      </div>
 
-      <section class="account-upgrade-banner">
-        <div>
-          <h2>${isVi ? "Nâng cấp LingoBloom Pro" : "升级 LingoBloom Pro"}</h2>
-          <p>${isVi ? "Mở khóa tất cả bài học HSK nâng cao, học không giới hạn cùng trợ lý AI và nhận chứng chỉ sau mỗi cấp độ." : "解锁高级 HSK 课程、无限学习 AI 助手，并在每个级别后获得证书。"}</p>
-        </div>
-        <button type="button" class="account-upgrade-btn">
-          ${isVi ? "Nâng cấp ngay" : "立即升级"}
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M5 12h14" />
-            <path d="M13 6l6 6-6 6" />
+        <button type="button" class="account-password-card" id="accountChangePasswordBtn">
+          <span class="account-password-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+            </svg>
+          </span>
+          <span class="account-password-label">${isVi ? "Đổi mật khẩu" : "修改密码"}</span>
+          <svg class="account-password-chevron" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 6l6 6-6 6"/>
           </svg>
         </button>
-      </section>
-    </div>
-  `;
 
-  document.body.appendChild(accountDiv);
-  const closePanel = () => accountDiv.remove();
-  accountDiv.querySelector("#closeAccountPanel").onclick = closePanel;
-  accountDiv.querySelector("#cancelAccountPanel").onclick = closePanel;
-  accountDiv.onclick = (event) => {
-    if (event.target === accountDiv) closePanel();
-  };
-  accountDiv.querySelector("#accountForm").onsubmit = (event) => {
-    event.preventDefault();
-    const fullName = accountDiv.querySelector("#accountNameInput").value.trim();
-    const emailValue = accountDiv.querySelector("#accountEmailInput").value.trim();
-    const nextLevel = accountDiv.querySelector("#accountLevelInput").value;
-    const nextLang = accountDiv.querySelector("#accountLangInput").value;
-    if (fullName) state.user.fullName = fullName;
-    if (emailValue) state.user.email = emailValue;
-    state.level = nextLevel;
-    state.lang = nextLang;
-    saveState();
-    renderChrome();
-    renderAll();
-    showToast(state.lang === "vi" ? "Đã lưu thông tin tài khoản" : "已保存账户信息");
-    closePanel();
-  };
-  accountDiv.querySelector(".account-upgrade-btn").onclick = () => {
-    showUpgradePlansModal();
-  };
+      </div>
+    </div>
+  `, "app-desktop-shell--account", "account");
 }
 
 function showUpgradePlansModal() {
@@ -2021,7 +3315,7 @@ function showUpgradePlansModal() {
       <button class="upgrade-plans-close" id="closeUpgradePlansModal" type="button" aria-label="${isVi ? "Đóng" : "关闭"}">&times;</button>
       <div class="upgrade-plans-heading">
         <span class="upgrade-mobile-pill">PRO</span>
-        <h2>${isVi ? "Nâng tầm trải nghiệm học tập cùng" : "升级你的学习体验"}<br>HuaMei<span>Pro</span></h2>
+        <h2>${isVi ? "Nâng tầm trải nghiệm học tập cùng" : "升级你的学习体验"}<br>HuaMei<span> Pro</span></h2>
         <h3>${isVi ? "Học tập không giới hạn" : "无限学习"}</h3>
         <p>${isVi ? "Mở khóa toàn bộ tính năng và lộ trình học tập chuyên sâu để làm chủ tiếng Trung nhanh hơn." : "解锁全部功能和深度学习路线，更快掌握中文。"}</p>
       </div>
@@ -2061,6 +3355,7 @@ function showUpgradePlansModal() {
   const renderPlans = (plans) => {
     const grid = modalDiv.querySelector(".upgrade-plans-grid");
     if (!grid) return;
+    grid.classList.toggle("upgrade-plans-grid--single", plans.length === 1);
     grid.innerHTML = plans.map((plan) => `
       <article class="upgrade-plan-card ${plan.popular ? "popular" : ""}" data-upgrade-plan-card="${escapeAttr(plan.id)}" role="button" tabindex="0">
         ${plan.discount ? `<div class="upgrade-popular-badge">${escapeAttr(plan.discount)}</div>` : ""}
@@ -2422,6 +3717,9 @@ function showQuitModal() {
 }
 
 function renderGlobalFooter() {
+  // Footer tạm ẩn
+  return;
+
   const footerNode = $("#globalFooter");
   if (!footerNode) return;
 
@@ -2501,79 +3799,463 @@ function renderGlobalFooter() {
 
 }
 
-function renderHomeTestimonialsHTML(isVi) {
-  const items = [
-    {
-      nameVi: "Nguyễn Hà N.",
-      nameZh: "阮荷娜",
-      image: "assets/review_user_1.png",
-      textVi: "Giáo trình bài bản và có hệ thống. Sau 6 tháng học trên HuaMei, tôi đã tự tin đậu HSK 4 và giao tiếp cơ bản trong công việc.",
-      textZh: "课程体系完整又系统。在华美学习六个月后，我顺利通过了 HSK 4，并能在工作中进行基础交流。",
-    },
-    {
-      nameVi: "Trần Anh",
-      nameZh: "陈英",
-      image: "assets/review_user_2.png",
-      textVi: "Các thầy cô rất nhiệt tình, bài học sát thực tế. Mình có thể dùng tiếng Trung trực tiếp trong các cuộc họp công việc.",
-      textZh: "老师非常热情，课程内容贴近实际。我现在可以直接用中文参与工作会议。",
-    },
-    {
-      nameVi: "Lê Minh Dũng",
-      nameZh: "黎明勇",
-      image: "assets/review_user_3.png",
-      textVi: "Ứng dụng tiện, có thể học mọi lúc mọi nơi. Kỹ năng viết và giao tiếp của mình tiến bộ rõ rệt chỉ sau vài tháng.",
-      textZh: "应用很方便，随时随地都能学习。短短几个月，我的书写和沟通能力就有了明显提升。",
-    },
-  ];
+function getHomeDashboardStats() {
+  const totalLessons = Object.values(hskLevels).flat().length + dailyThemes.length;
+  const completedLessons = state.completed.size;
+  const percent = totalLessons > 0 ? Math.min(100, Math.round((completedLessons / totalLessons) * 100)) : 0;
+  const xp = completedLessons * 20 + state.saved.size * 5;
+  const studyMinutes = Math.max(12, completedLessons * 6 + state.saved.size * 2);
+  const practicedChars = Math.max(state.saved.size * 3, completedLessons * 4);
+  const streakDays = Math.max(1, Math.min(30, completedLessons || 1));
+  const level = Math.max(1, Math.min(99, Math.floor(xp / 100) + 1));
+  return {
+    totalLessons,
+    completedLessons,
+    percent,
+    xp,
+    studyMinutes,
+    practicedChars,
+    streakDays,
+    level,
+    topPercent: Math.max(5, 100 - Math.min(95, completedLessons * 3 + 8)),
+  };
+}
+
+function renderHomeDesktopSavedVocabHTML(isVi) {
+  const savedItems = Array.from(state.saved)
+    .map((hanzi) => ({ hanzi, ...findItemByHanzi(hanzi) }))
+    .slice(0, 4);
+
+  if (!savedItems.length) {
+    return `
+      <div class="home-desktop-vocab-empty">
+        ${isVi ? "Chưa có từ vựng đã lưu. Hãy lưu từ khi luyện tập để ôn lại tại đây." : "还没有收藏生词。练习时收藏词汇即可在这里复习。"}
+      </div>
+    `;
+  }
 
   return `
-    <section class="testimonials-section">
-      <div class="testimonials-panel">
-        <div class="testimonials-decor testimonials-decor-left" aria-hidden="true">
-          <svg viewBox="0 0 120 80" fill="none">
-            <path d="M8 58c18-10 34-8 48 4" stroke="rgba(16,163,82,0.14)" stroke-width="2" stroke-linecap="round"/>
-            <path d="M18 42c14-8 28-6 40 6" stroke="rgba(16,163,82,0.1)" stroke-width="1.5" stroke-linecap="round"/>
-          </svg>
+    <div class="home-desktop-vocab-grid">
+      ${savedItems.map((item) => `
+        <article class="home-desktop-vocab-card" data-vocab-hanzi="${escapeAttr(item.hanzi)}">
+          <div class="home-desktop-vocab-top">
+            <strong class="home-desktop-vocab-hanzi">${escapeHtml(item.hanzi)}</strong>
+            <button type="button" class="home-desktop-vocab-star" aria-label="${isVi ? "Đã lưu" : "已收藏"}">★</button>
+          </div>
+          <p class="home-desktop-vocab-pinyin">${escapeHtml(item.tone || item.pinyin || "")}</p>
+          <p class="home-desktop-vocab-meaning">${escapeHtml(item.vi || "")}</p>
+          <button type="button" class="home-desktop-vocab-speak vocab-speak-btn" aria-label="${isVi ? "Phát âm" : "朗读"}">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>
+            </svg>
+          </button>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderHomeDesktopModulesHTML(isVi) {
+  return `
+    <section class="home-desktop-modules" aria-label="${isVi ? "Khóa học chính" : "主要课程"}">
+      <article class="home-desktop-module-card home-desktop-module-card--hsk">
+        <img
+          class="home-desktop-module-cover"
+          src="assets/home-module-hsk-pc.png"
+          alt=""
+          onerror="this.src='assets/home-module-hsk.png'"
+        />
+        <div class="home-desktop-module-content">
+          <div>
+            <h3>HSK</h3>
+            <p>${isVi ? "Bài học theo cấp độ" : "分级课程"}</p>
+          </div>
+          <button type="button" class="home-desktop-module-btn" data-home-module="hsk">
+            ${isVi ? "Bắt đầu học" : "开始学习"} <span aria-hidden="true">›</span>
+          </button>
         </div>
-        <div class="testimonials-decor testimonials-decor-right" aria-hidden="true">
-          <svg viewBox="0 0 140 160" fill="none">
-            <path d="M98 8v18c0 8-6 14-14 14h-4c-8 0-14-6-14-14V8" stroke="#d64545" stroke-width="2"/>
-            <rect x="78" y="38" width="24" height="30" rx="4" fill="#ef4444"/>
-            <line x1="90" y1="68" x2="90" y2="78" stroke="#d64545" stroke-width="2"/>
-            <path d="M118 24c-8 12-18 22-30 30" stroke="#86b38a" stroke-width="2" stroke-linecap="round"/>
-            <path d="M124 42c-10 10-20 18-34 24" stroke="#9cc9a0" stroke-width="1.8" stroke-linecap="round"/>
-            <ellipse cx="108" cy="88" rx="10" ry="16" fill="#a8d5ab" opacity="0.55"/>
-            <ellipse cx="118" cy="104" rx="8" ry="14" fill="#8fc294" opacity="0.45"/>
-          </svg>
+      </article>
+      <article class="home-desktop-module-card home-desktop-module-card--daily">
+        <img class="home-desktop-module-cover" src="assets/home-module-daily-pc.png" alt="" onerror="this.src='assets/home-module-daily.png'" />
+        <div class="home-desktop-module-content">
+          <div>
+            <h3>${isVi ? "Giao tiếp" : "交际"}</h3>
+            <p>${isVi ? "Luyện nói & viết" : "听说读写"}</p>
+          </div>
+          <button type="button" class="home-desktop-module-btn" data-home-module="daily">
+            ${isVi ? "Vào luyện tập" : "进入练习"} <span aria-hidden="true">›</span>
+          </button>
+        </div>
+      </article>
+      <article class="home-desktop-module-card home-desktop-module-card--vocab">
+        <img
+          class="home-desktop-module-cover"
+          src="assets/home-module-vocab-pc.png"
+          alt=""
+          onerror="this.src='assets/home-module-vocab.png'"
+        />
+        <div class="home-desktop-module-content">
+          <div>
+            <h3>${isVi ? "Từ vựng đã lưu" : "收藏生词"}</h3>
+            <p>${isVi ? "Ôn tập từ yêu thích" : "复习收藏词"}</p>
+          </div>
+          <button type="button" class="home-desktop-module-btn" data-home-module="vocab">
+            ${isVi ? "Xem danh sách" : "查看列表"} <span aria-hidden="true">›</span>
+          </button>
+        </div>
+      </article>
+    </section>
+  `;
+}
+
+function getDesktopNavActive() {
+  if (state.screen === "home") return "home";
+  if (state.screen === "vocab") return "vocab";
+  if (state.screen === "account") return "account";
+  if (state.screen === "course") return state.module === "daily" ? "daily" : "hsk";
+  return "";
+}
+
+function desktopNavIcon(name) {
+  const icons = {
+    home: `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M3 10.6 12 3l9 7.6V21h-6v-6H9v6H3V10.6z"/></svg>`,
+    hsk: `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5 12 4l9 4.5-9 4.5-9-4.5z"/><path d="M6 10.2v5.1c1.7 1.5 3.7 2.2 6 2.2s4.3-.7 6-2.2v-5.1"/><path d="M21 9v5"/></svg>`,
+    daily: `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18h7"/><path d="M7.5 18c2.4-4.3 4.1-8.6 5-13"/><path d="M5 8h9"/><path d="M11 5h4"/><path d="M15 20l3.6-9 3.4 9"/><path d="M16.2 17h4.6"/></svg>`,
+    vocab: `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M10 3v18"/><path d="M14 3v18"/></svg>`,
+    account: `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg>`,
+  };
+  return icons[name] || "";
+}
+
+function renderAppDesktopSidebarHTML(activeNavOverride = "") {
+  const isVi = state.lang === "vi";
+  const active = activeNavOverride || getDesktopNavActive();
+  const navClass = (id) => `home-desktop-nav-item${active === id ? " is-active" : ""}`;
+
+  return `
+    <aside class="home-desktop-sidebar" aria-label="${isVi ? "Điều hướng" : "导航"}">
+      <div class="home-desktop-brand">
+        <span class="home-desktop-brand-icon" aria-hidden="true">✎</span>
+        <div>
+          <strong>${isVi ? "HuaMei" : "HuaMei"}</strong>
+          <small>${isVi ? "Viết đẹp - Nhớ lâu" : "写好字 · 记得牢"}</small>
+        </div>
+      </div>
+      <nav class="home-desktop-nav">
+        <button type="button" class="${navClass("home")}" data-home-nav="home">
+          <span aria-hidden="true">${desktopNavIcon("home")}</span>${isVi ? "Trang chủ" : "首页"}
+        </button>
+        <button type="button" class="${navClass("hsk")}" data-home-nav="hsk">
+          <span aria-hidden="true">${desktopNavIcon("hsk")}</span>${t("hskTitle")}
+        </button>
+        <button type="button" class="${navClass("daily")}" data-home-nav="daily">
+          <span aria-hidden="true">${desktopNavIcon("daily")}</span>${t("dailyTabNav")}
+        </button>
+        <button type="button" class="${navClass("vocab")}" data-home-nav="vocab">
+          <span aria-hidden="true">${desktopNavIcon("vocab")}</span>${t("vocab")}
+        </button>
+        <button type="button" class="${navClass("account")}" data-home-nav="account">
+          <span aria-hidden="true">${desktopNavIcon("account")}</span>${isVi ? "Cá nhân" : "个人"}
+        </button>
+      </nav>
+      <div class="home-desktop-sidebar-foot">
+        ${state.user ? `
+          <button type="button" class="home-desktop-logout-btn" id="homeDesktopLogoutBtn">
+            ${t("logout")}
+          </button>
+        ` : ""}
+      </div>
+    </aside>
+  `;
+}
+
+function renderMobilePageReturnBar(activeNav = "") {
+  if (!activeNav || activeNav === "home") return "";
+  if (activeNav === "hsk" && !state.hskLevelPicker) return "";
+  const labels = {
+    hsk: state.lang === "vi" ? "Khóa HSK" : "HSK 课程",
+    daily: state.lang === "vi" ? "Giao tiếp" : "交流",
+    vocab: state.lang === "vi" ? "Bộ từ" : "词库",
+    account: state.lang === "vi" ? "Cá nhân" : "个人",
+  };
+  return `
+    <div class="mobile-page-return-bar mobile-page-return-bar--${escapeAttr(activeNav)}" aria-label="${escapeAttr(labels[activeNav] || "")}">
+      <button type="button" class="mobile-page-return-btn" data-mobile-page-back aria-label="${state.lang === "vi" ? "Quay lại trang chủ" : "返回首页"}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M15 18l-6-6 6-6" />
+        </svg>
+      </button>
+    </div>
+  `;
+}
+
+function wrapWithAppDesktopShell(innerHTML, shellClass = "", activeNav = "") {
+  return `
+    <div class="app-desktop-shell ${shellClass}">
+      ${renderAppDesktopSidebarHTML(activeNav)}
+      <div class="app-desktop-content">
+        ${renderMobilePageReturnBar(activeNav)}
+        ${innerHTML}
+      </div>
+    </div>
+  `;
+}
+
+function setScreenWithDesktopShell(screenKey, innerHTML, shellClass = "", activeNav = "") {
+  const node = screens[screenKey];
+  if (!node) return;
+  node.innerHTML = wrapWithAppDesktopShell(innerHTML, shellClass, activeNav);
+}
+
+function renderHomeDesktopLayoutHTML(isVi) {
+  const stats = getHomeDashboardStats();
+  const userName = state.user?.fullName || (isVi ? "Học viên" : "学员");
+  const desktopProfileName = state.user ? userName : (isVi ? "Đăng nhập ngay" : "立即登录");
+  const userInitial = String(userName).charAt(0).toUpperCase();
+  const avatarUrl = getAccountAvatarUrl();
+  const avatarHTML = avatarUrl
+    ? `<img src="${escapeAttr(avatarUrl)}" alt="${escapeAttr(userName)}" />`
+    : escapeHtml(userInitial);
+  const accountTypeLabel = state.user?.role === "admin" ? "Admin" : hasPremiumAccess() ? "Premium" : "Free";
+  const studyHours = Math.floor(stats.studyMinutes / 60);
+  const studyMins = stats.studyMinutes % 60;
+  const studyLabel = studyHours > 0
+    ? `${studyHours}h ${studyMins}m`
+    : `${studyMins}m`;
+
+  return `
+    <div class="home-desktop-layout">
+      <div class="home-desktop-main">
+        <header class="home-desktop-topbar">
+          <div>
+            <h1>${isVi ? "Luyện viết tiếng Trung" : "中文书写练习"}</h1>
+            <p>${isVi ? "Viết đúng – Nhớ lâu" : "正确书写 · 终身受益"}</p>
+          </div>
+        </header>
+
+
+        ${renderHomeDesktopModulesHTML(isVi)}
+
+        <section class="home-desktop-saved-section">
+          <div class="home-desktop-section-head">
+            <h2>★ ${isVi ? "Từ vựng đã lưu" : "收藏生词"}</h2>
+            <button type="button" class="home-desktop-link-btn" data-home-module="vocab">${isVi ? "Xem tất cả" : "查看全部"} ›</button>
+          </div>
+          ${renderHomeDesktopSavedVocabHTML(isVi)}
+        </section>
+
+        <section class="home-desktop-challenge">
+          <img
+            class="home-desktop-challenge-cover"
+            src="assets/home-desktop-challenge.png"
+            alt="${isVi ? "Thử thách viết mỗi ngày" : "每日书写挑战"}"
+          />
+          <button type="button" class="home-desktop-challenge-btn" id="homeDesktopChallengeBtn">
+            ${isVi ? "Bắt đầu ngay" : "立即开始"} ›
+          </button>
+        </section>
+      </div>
+
+      <aside class="home-desktop-rail" aria-label="${isVi ? "Tiến độ học tập" : "学习进度"}">
+        <div class="home-desktop-profile-card${state.user ? "" : " home-desktop-profile-card--login"}" ${state.user ? "" : "data-home-login"}>
+          <div class="home-desktop-avatar">${avatarHTML}</div>
+          <div>
+            <p>${isVi ? "Xin chào!" : "你好！"}</p>
+            <strong>${escapeHtml(desktopProfileName)}</strong>
+          </div>
+          <span class="home-desktop-level-badge">${escapeHtml(accountTypeLabel)}</span>
         </div>
 
-        <h2 class="testimonials-title">
-          <span class="testimonials-title-accent">${isVi ? "Bạn nghĩ gì về HuaMei" : "作为语言学习者，您对华美"}</span>${isVi ? " với tư cách là một người học ngôn ngữ?" : "有什么看法？"}
-        </h2>
-        <div class="testimonials-divider" aria-hidden="true"><span></span></div>
+        <div class="home-desktop-streak-card">
+          <div>
+            <span>${isVi ? "Chuỗi ngày" : "连续天数"}</span>
+            <strong>${stats.streakDays} ${isVi ? "ngày" : "天"}</strong>
+          </div>
+          <span class="home-desktop-streak-icon" aria-hidden="true">👑</span>
+        </div>
 
-        <div class="testimonials-grid">
-          ${items.map((item) => `
-            <article class="testimonial-card">
-              <div class="testimonial-quote" aria-hidden="true">“</div>
-              <div class="testimonial-card-top">
-                <img class="testimonial-avatar" src="${item.image}" alt="" loading="lazy" />
-                <div class="testimonial-meta">
-                  <strong>${isVi ? item.nameVi : item.nameZh}</strong>
-                  <div class="testimonial-stars" aria-label="${isVi ? "5 sao" : "5 星"}">★★★★★</div>
-                </div>
+        <section class="home-desktop-stats-card">
+          <h3>${isVi ? "Tổng quan tiến độ" : "进度总览"}</h3>
+          <ul>
+            <li><span>${isVi ? "Thời gian học" : "学习时长"}</span><strong>${studyLabel}</strong></li>
+            <li><span>${isVi ? "Bài đã hoàn thành" : "已完成课程"}</span><strong>${stats.completedLessons}</strong></li>
+            <li><span>${isVi ? "Chữ đã luyện" : "已练汉字"}</span><strong>${stats.practicedChars}</strong></li>
+            <li><span>${isVi ? "Ngày liên tiếp" : "连续天数"}</span><strong>${stats.streakDays}</strong></li>
+          </ul>
+        </section>
+
+      </aside>
+    </div>
+  `;
+}
+
+function renderHomeMobileTopbarHTML(isVi) {
+  const stats = getHomeDashboardStats();
+  const userName = state.user?.fullName || (isVi ? "Học viên" : "学员");
+  const userInitial = String(userName).charAt(0).toUpperCase();
+  const avatarUrl = getAccountAvatarUrl();
+  const avatarHTML = avatarUrl
+    ? `<img src="${escapeAttr(avatarUrl)}" alt="${escapeAttr(userName)}" />`
+    : escapeHtml(userInitial);
+  const streakLabel = isVi ? "Học liên tục" : "连续学习";
+  const dayUnit = isVi ? "ngày" : "天";
+  const cheer = isVi ? "Tuyệt vời!" : "太棒了！";
+
+  return `
+    <header class="home-mobile-topbar" aria-label="${isVi ? "Tiêu đề trang chủ" : "首页标题"}">
+      <div class="home-mobile-topbar-streak">
+        <span class="home-mobile-topbar-crown" aria-hidden="true">👑</span>
+        <span class="home-mobile-topbar-streak-label">${streakLabel}</span>
+        <strong class="home-mobile-topbar-streak-days">
+          ${stats.streakDays}<span>${dayUnit}</span>
+        </strong>
+        <span class="home-mobile-topbar-streak-cheer">
+          ${cheer}<span class="home-mobile-topbar-streak-arrow" aria-hidden="true">↗</span>
+        </span>
+      </div>
+
+      <div class="home-mobile-topbar-brand">
+        <h1>
+          ${isVi
+      ? `Luyện viết<br>tiếng <span class="home-mobile-topbar-accent">Trung</span>`
+      : `中文<br><span class="home-mobile-topbar-accent">书写</span>练习`}
+        </h1>
+        <p>${isVi ? "Viết đúng nét – Nhớ lâu chữ" : "写对笔画 · 记得更牢"}</p>
+      </div>
+
+      <div class="home-mobile-topbar-profile">
+        <div class="home-mobile-topbar-avatar">${avatarHTML}</div>
+        <p class="home-mobile-topbar-greet">${escapeHtml(userName)}</p>
+        <span class="home-mobile-topbar-level">
+          ${isVi ? "Học viên" : "学员"}
+          <span class="home-mobile-topbar-level-badge">
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" aria-hidden="true">
+              <path d="M12 2l2.2 4.8 5.3.7-3.8 3.7.9 5.3-4.6-2.5-4.6 2.5.9-5.3L4.5 7.5l5.3-.7L12 2z"/>
+            </svg>
+            ${escapeHtml(state.user?.role === "admin" ? "Admin" : hasPremiumAccess() ? "Premium" : "Free")}
+          </span>
+        </span>
+      </div>
+    </header>
+  `;
+}
+
+function renderHomeMobilePromoBannerHTML(isVi) {
+  return `
+    <section class="home-mobile-promo-banner" aria-label="${isVi ? "Học tiếng Trung" : "学习中文"}">
+      <img
+        class="home-mobile-promo-banner-img"
+        src="assets/home-mobile-promo-banner.png"
+        alt="${isVi ? "Học tiếng Trung - Giao tiếp tự tin, mở rộng tương lai" : "学习中文 - 自信交流，拓展未来"}"
+      />
+    </section>
+  `;
+}
+
+function renderHomeMobileModulesHTML(isVi) {
+  return `
+    <section class="home-mobile-modules" aria-label="${isVi ? "Khóa học nhanh" : "快捷课程"}">
+      <div class="home-mobile-modules-grid">
+        <article class="home-mobile-module-card home-mobile-module-card--hsk">
+          <img class="home-mobile-module-cover" src="assets/home-module-hsk.png" alt="" />
+          <div class="home-mobile-module-content">
+            <div class="home-mobile-module-copy">
+              <h3>HSK</h3>
+              <p>${isVi ? "Bài học theo cấp độ" : "分级课程"}</p>
+            </div>
+            <button type="button" class="home-mobile-module-btn" data-home-module="hsk">
+              ${isVi ? "Bắt đầu học" : "开始学习"}
+              <span aria-hidden="true">›</span>
+            </button>
+          </div>
+        </article>
+
+        <article class="home-mobile-module-card home-mobile-module-card--daily">
+          <img class="home-mobile-module-cover" src="assets/home-module-daily.png" alt="" />
+          <div class="home-mobile-module-content">
+            <div class="home-mobile-module-copy">
+              <h3>${isVi ? "Giao tiếp" : "交际"}</h3>
+              <p>${isVi ? "Luyện nói & viết" : "听说读写"}</p>
+            </div>
+            <button type="button" class="home-mobile-module-btn" data-home-module="daily">
+              ${isVi ? "Vào luyện tập" : "进入练习"}
+              <span aria-hidden="true">›</span>
+            </button>
+          </div>
+        </article>
+
+        <article class="home-mobile-module-card home-mobile-module-card--vocab">
+          <img class="home-mobile-module-cover" src="assets/home-module-vocab.png" alt="" />
+          <div class="home-mobile-module-content">
+            <div class="home-mobile-module-copy">
+              <h3>${isVi ? "Từ vựng đã lưu" : "收藏生词"}</h3>
+              <p>${isVi ? "Ôn tập từ yêu thích" : "复习收藏词"}</p>
+            </div>
+            <button type="button" class="home-mobile-module-btn" data-home-module="vocab">
+              ${isVi ? "Xem danh sách" : "查看列表"}
+              <span aria-hidden="true">›</span>
+            </button>
+          </div>
+        </article>
+      </div>
+    </section>
+  `;
+}
+
+function renderHomeMobileSavedVocabHTML(isVi) {
+  const savedItems = Array.from(state.saved)
+    .map((hanzi) => ({ hanzi, ...findItemByHanzi(hanzi) }))
+    .filter((item) => item && item.hanzi)
+    .slice(0, 4);
+
+  return `
+    <section class="home-mobile-saved-section" aria-label="${isVi ? "Từ vựng đã lưu" : "收藏生词"}">
+      <div class="home-mobile-saved-head">
+        <h2>★ ${isVi ? "Từ vựng đã lưu" : "收藏生词"}</h2>
+        <button type="button" class="home-mobile-saved-link" data-home-module="vocab">
+          ${isVi ? "Xem tất cả" : "查看全部"} <span aria-hidden="true">›</span>
+        </button>
+      </div>
+      ${savedItems.length ? `
+        <div class="home-mobile-saved-grid">
+          ${savedItems.map((item) => `
+            <article class="home-mobile-vocab-card" data-vocab-hanzi="${escapeAttr(item.hanzi)}">
+              <button type="button" class="home-mobile-vocab-star" aria-label="${isVi ? "Đã lưu" : "已收藏"}">★</button>
+              <div class="home-mobile-vocab-body">
+                <strong class="home-mobile-vocab-hanzi">${escapeHtml(item.hanzi)}</strong>
+                <p class="home-mobile-vocab-pinyin">${escapeHtml(item.tone || item.pinyin || "")}</p>
+                <p class="home-mobile-vocab-meaning">${escapeHtml(item.vi || "")}</p>
               </div>
-              <p class="testimonial-text">${isVi ? item.textVi : item.textZh}</p>
+              <button type="button" class="home-mobile-vocab-speak vocab-speak-btn" aria-label="${isVi ? "Phát âm" : "朗读"}">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>
+                </svg>
+              </button>
             </article>
           `).join("")}
         </div>
-
-        <div class="testimonials-dots" aria-hidden="true">
-          <span class="is-active"></span>
-          <span></span>
-          <span></span>
+      ` : `
+        <div class="home-mobile-saved-empty">
+          ${isVi ? "Chưa có từ vựng đã lưu. Hãy lưu từ khi luyện tập để ôn lại tại đây." : "还没有收藏生词。练习时收藏词汇即可在这里复习。"}
         </div>
-      </div>
+      `}
+    </section>
+  `;
+}
+
+function renderHomeMobileChallengeHTML(isVi) {
+  const challengeChar = "进";
+  return `
+    <section class="home-mobile-challenge" aria-label="${isVi ? "Thử thách viết mỗi ngày" : "每日书写挑战"}">
+      <img
+        class="home-mobile-challenge-cover"
+        src="assets/home-mobile-challenge.png"
+        alt="${isVi ? `Thử thách viết mỗi ngày - Viết chữ ${challengeChar} 10 lần thật đẹp` : `每日书写挑战 - 把“${challengeChar}”写 10 遍`}"
+        loading="lazy"
+      />
+      <button type="button" class="home-mobile-challenge-btn" id="homeMobileChallengeBtn">
+        ${isVi ? "Bắt đầu ngay" : "立即开始"} ›
+      </button>
     </section>
   `;
 }
@@ -2581,19 +4263,24 @@ function renderHomeTestimonialsHTML(isVi) {
 function renderHome() {
   const isVi = state.lang === "vi";
   screens.home.innerHTML = `
+    ${wrapWithAppDesktopShell(renderHomeDesktopLayoutHTML(isVi), "app-desktop-shell--home", "home")}
+
+    <div class="home-legacy-mobile">
+    ${renderHomeMobileTopbarHTML(isVi)}
+    ${renderHomeMobilePromoBannerHTML(isVi)}
     <!-- Hero Section -->
     <section class="redesigned-home hero-section">
         <div class="hero-content">
           <h1 class="hero-title">
             ${isVi
-    ? `Học tiếng Trung<br>dễ dàng cùng<br><span class="hero-highlight">lộ trình rõ ràng<span class="highlight-line" aria-hidden="true"></span></span>`
-    : `轻松学习中文<br>搭配清晰<br><span class="hero-highlight">学习路线<span class="highlight-line" aria-hidden="true"></span></span>`}
+      ? `Học tiếng Trung<br>dễ dàng cùng<br><span class="hero-highlight">lộ trình rõ ràng<span class="highlight-line" aria-hidden="true"></span></span>`
+      : `轻松学习中文<br>搭配清晰<br><span class="hero-highlight">学习路线<span class="highlight-line" aria-hidden="true"></span></span>`}
           </h1>
 
           <p class="hero-subtitle">
             ${isVi
-    ? "Khóa học bài bản cho người mới bắt đầu đến nâng cao, giúp bạn tự tin giao tiếp, học HSK và ứng dụng trong công việc."
-    : "从入门到进阶的系统课程，帮助你自信交流、备考 HSK，并应用到工作中。"}
+      ? "Khóa học bài bản cho người mới bắt đầu đến nâng cao, giúp bạn tự tin giao tiếp, học HSK và ứng dụng trong công việc."
+      : "从入门到进阶的系统课程，帮助你自信交流、备考 HSK，并应用到工作中。"}
           </p>
           <div class="hero-buttons">
             <button id="heroStartBtn" class="btn-hero-primary" type="button">
@@ -2609,61 +4296,10 @@ function renderHome() {
         </div>
     </section>
 
-    <!-- Features Section: Vì sao nên học cùng chúng tôi? -->
-    <section class="features-section">
-        <h2 class="section-title text-center">
-          ${isVi ? "Vì sao nên học cùng chúng tôi?" : "为什么选择和我们一起学习？"}
-        </h2>
-        <div class="features-grid">
-          <div class="feature-card">
-            <div class="feature-icon-wrapper color-route">
-              <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                <circle cx="12" cy="10" r="3" />
-              </svg>
-            </div>
-            <h3 class="feature-title">${isVi ? "Lộ trình rõ ràng" : "清晰的学习路线"}</h3>
-            <p class="feature-desc">${isVi ? "Lộ trình khóa học theo từng cấp độ, dễ dàng theo dõi và bứt phá." : "按级别排列的课程路线，易于跟踪和突破。"}</p>
-          </div>
-          
-          <div class="feature-card">
-            <div class="feature-icon-wrapper color-teacher">
-              <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                <circle cx="9" cy="7" r="4" />
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-              </svg>
-            </div>
-            <h3 class="feature-title">${isVi ? "Giảng viên tận tâm" : "用心的讲师"}</h3>
-            <p class="feature-desc">${isVi ? "Giảng viên giàu kinh nghiệm, nhiệt tình đồng hành cùng bạn." : "经验丰富的讲师，热情地陪伴着您。"}</p>
-          </div>
-          
-          <div class="feature-card">
-            <div class="feature-icon-wrapper color-book">
-              <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-              </svg>
-            </div>
-            <h3 class="feature-title">${isVi ? "Bài học dễ hiểu" : "通俗易懂的课程"}</h3>
-            <p class="feature-desc">${isVi ? "Nội dung tinh gọn, sinh động, dễ hiểu và dễ áp dụng vào thực tế." : "内容精简、生动、易懂，且易于应用到实际中。"}</p>
-          </div>
-          
-          <div class="feature-card">
-            <div class="feature-icon-wrapper color-support">
-              <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
-                <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
-              </svg>
-            </div>
-            <h3 class="feature-title">${isVi ? "Hỗ trợ 1:1" : "1对1支持"}</h3>
-            <p class="feature-desc">${isVi ? "Hỗ trợ riêng từng học viên, giải đáp nhanh chóng, tiến bộ mỗi ngày." : "针对每位学员的专属支持，快速解答，每天都有进步。"}</p>
-          </div>
-        </div>
-    </section>
-
-    ${renderHomeTestimonialsHTML(isVi)}
+    ${renderHomeMobileModulesHTML(isVi)}
+    ${renderHomeMobileSavedVocabHTML(isVi)}
+    ${renderHomeMobileChallengeHTML(isVi)}
+    </div>
   `;
 }
 
@@ -2692,6 +4328,7 @@ function renderHskLessonListHTML() {
 
   return filteredLessons.length > 0 ? filteredLessons.map(({ lessonItem }) => {
     const isCompleted = state.completed.has(lessonItem.id);
+    const isLocked = isHskLessonLockedForUser(lessonItem.id);
     const wordCount = hskLessonItemsByType(lessonItem, "word").length;
     const sentenceCount = hskLessonItemsByType(lessonItem, "sentence").length;
 
@@ -2707,9 +4344,9 @@ function renderHskLessonListHTML() {
     }
 
     return `
-      <div class="hsk-lesson-card ${isCompleted ? "completed" : ""}" data-lesson="${lessonItem.id}">
+      <div class="hsk-lesson-card ${isCompleted ? "completed" : ""} ${isLocked ? "locked" : ""}" data-lesson="${lessonItem.id}" ${isLocked ? 'data-locked="true"' : ""}>
         <div class="hsk-lesson-left">
-          <div class="hsk-lesson-number">${lessonItem.no}</div>
+          <div class="hsk-lesson-number${isLocked ? " hsk-lesson-number--locked" : ""}">${isLocked ? renderContentLockIconHTML("number") : lessonItem.no}</div>
           <div class="hsk-lesson-info">
             <h4>${isVi ? `Bài ${lessonItem.no}` : `第 ${lessonItem.no} 课`}</h4>
             <p>${state.lang === "vi" ? (lessonItem.titleVi || lessonItem.title) : (lessonItem.titleZh || lessonItem.title)}</p>
@@ -2723,7 +4360,7 @@ function renderHskLessonListHTML() {
         <div class="hsk-lesson-right">
           <span class="hsk-items-count hsk-items-count--word">${wordCount} ${isVi ? "từ vựng" : "生词"}</span>
           <span class="hsk-items-count hsk-items-count--phrase">${sentenceCount} ${isVi ? "câu" : "句子"}</span>
-          <button class="hsk-lesson-arrow-btn" type="button" aria-label="Luyện tập">›</button>
+          ${isLocked ? "" : `<button class="hsk-lesson-arrow-btn" type="button" aria-label="${isVi ? "Luyện tập" : "练习"}">›</button>`}
         </div>
       </div>
     `;
@@ -2740,11 +4377,11 @@ function renderHskContentTypePickerHTML(lessonItem = getHskPendingLesson()) {
   return `
     <div class="hsk-study-part-grid">
       ${hskContentTypes.map((contentType) => {
-        const itemsCount = hskLessonItemsByType(lessonItem, contentType.id).length;
-        const active = state.hskContentType === contentType.id;
-        const disabled = itemsCount === 0;
-        const isWord = contentType.id === "word";
-        return `
+    const itemsCount = hskLessonItemsByType(lessonItem, contentType.id).length;
+    const active = state.hskContentType === contentType.id;
+    const disabled = itemsCount === 0;
+    const isWord = contentType.id === "word";
+    return `
           <button class="hsk-study-part-card hsk-study-part-card--${isWord ? "word" : "sentence"} ${active ? "active" : ""}" data-hsk-content-type="${contentType.id}" type="button" ${disabled ? "disabled" : ""}>
             <span class="hsk-study-part-copy">
               <strong>${isWord ? (isVi ? "Từ vựng" : "词汇") : (isVi ? "Câu" : "句子")}</strong>
@@ -2766,18 +4403,18 @@ function renderHskContentTypePickerHTML(lessonItem = getHskPendingLesson()) {
             <span class="hsk-study-part-arrow" aria-hidden="true">${iconSvg("arrow-right")}</span>
           </button>
         `;
-      }).join("")}
+  }).join("")}
     </div>
   `;
 }
 
 const hskLevelCards = [
-  { level: "HSK1", vi: "Sơ cấp 1", zh: "初级 1", descVi: "Giao tiếp sinh hoạt hằng ngày", descZh: "日常生活交流" },
-  { level: "HSK2", vi: "Sơ cấp 2", zh: "初级 2", descVi: "Từ vựng và mẫu câu nền tảng", descZh: "基础词汇和句型" },
-  { level: "HSK3", vi: "Trung cấp 1", zh: "中级 1", descVi: "Diễn đạt chủ đề quen thuộc", descZh: "表达熟悉话题" },
-  { level: "HSK4", vi: "Trung cấp 2", zh: "中级 2", descVi: "Giao tiếp linh hoạt hơn", descZh: "更灵活地交流" },
-  { level: "HSK5", vi: "Cao cấp 1", zh: "高级 1", descVi: "Đọc hiểu và thảo luận mở rộng", descZh: "阅读理解与讨论" },
-  { level: "HSK6", vi: "Cao cấp 2", zh: "高级 2", descVi: "Nâng cao phản xạ ngôn ngữ", descZh: "提升语言反应" },
+  { level: "HSK1", vi: "Sơ cấp", zh: "初级", descVi: "Giao tiếp sinh hoạt hàng ngày", descZh: "日常生活交流" },
+  { level: "HSK2", vi: "Sơ cấp", zh: "初级", descVi: "Từ vựng và mẫu câu nền tảng", descZh: "基础词汇和句型" },
+  { level: "HSK3", vi: "Sơ cấp", zh: "初级", descVi: "Diễn đạt chủ đề quen thuộc", descZh: "表达熟悉话题" },
+  { level: "HSK4", vi: "Trung cấp", zh: "中级", descVi: "Giao tiếp linh hoạt hơn", descZh: "更灵活地交流" },
+  { level: "HSK5", vi: "Cao cấp", zh: "高级", descVi: "Đọc hiểu và thảo luận mở rộng", descZh: "阅读理解与讨论" },
+  { level: "HSK6", vi: "Cao cấp", zh: "高级", descVi: "Nâng cao phản xạ ngôn ngữ", descZh: "提升语言反应" },
 ];
 
 function renderHskLevelPickerHTML() {
@@ -2793,21 +4430,27 @@ function renderHskLevelPickerHTML() {
     const isActive = card.level === state.level;
     const lessonCount = hskLevels[card.level]?.length || 30;
     const status = isActive ? (isVi ? "Đang học" : "学习中") : (isVi ? "Bắt đầu" : "开始");
+    const levelKey = card.level.toLowerCase();
     return `
-          <button class="hsk-level-card ${isActive ? "active" : ""}" data-level="${card.level}" type="button">
-            <span class="hsk-level-card-top">
-              <strong>${card.level}</strong>
-              <small>${lessonCount} ${isVi ? "bài" : "课"}</small>
+          <button class="hsk-level-card hsk-level-card--${levelKey} ${isActive ? "active" : ""}" data-level="${card.level}" type="button">
+            <img class="hsk-level-card-art" src="${escapeAttr(getHskLevelCoverUrl(card.level))}" alt="" aria-hidden="true" />
+            <span class="hsk-level-card-inner">
+              <span class="hsk-level-card-top">
+                <span class="hsk-level-card-badge">${card.level}</span>
+                <small class="hsk-level-card-count">${lessonCount} ${isVi ? "bài" : "课"}</small>
+              </span>
+              <span class="hsk-level-card-content">
+                <span class="hsk-level-card-title">${isVi ? card.vi : card.zh}</span>
+                <span class="hsk-level-card-desc">${isVi ? card.descVi : card.descZh}</span>
+                <span class="hsk-level-status"><i>${iconSvg("bar-chart")}</i>${status}</span>
+              </span>
+              <span class="hsk-level-arrow" aria-hidden="true">${iconSvg("arrow-right")}</span>
             </span>
-            <span class="hsk-level-card-title">${isVi ? card.vi : card.zh}</span>
-            <span class="hsk-level-card-desc">${isVi ? card.descVi : card.descZh}</span>
-            <span class="hsk-level-status"><i>${iconSvg("bar-chart")}</i>${status}</span>
-            <span class="hsk-level-arrow" aria-hidden="true">${iconSvg("arrow-right")}</span>
           </button>
         `;
   }).join("")}
       </div>
-    </div>
+    </section>
   `;
 }
 
@@ -2815,29 +4458,42 @@ function renderDailyContentTypePickerHTML(theme = getDailyPendingTheme()) {
   const isVi = state.lang === "vi";
   if (!theme) return "";
   return `
-    <div class="hsk-content-type-grid">
+    <div class="hsk-study-part-grid daily-study-part-grid">
       ${hskContentTypes.map((contentType) => {
-        const itemsCount = dailyThemeItemsByType(theme, contentType.id).length;
-        const active = state.dailyContentType === contentType.id;
-        const disabled = itemsCount === 0;
-        return `
-          <button class="hsk-content-type-card ${active ? "active" : ""}" data-daily-content-type="${contentType.id}" type="button" ${disabled ? "disabled" : ""}>
-            <span class="hsk-content-type-icon">${contentType.id === "word" ? "字" : "句"}</span>
-            <span class="hsk-content-type-copy">
-              <strong>${isVi ? contentType.labelVi : contentType.labelZh}</strong>
-              <small>${itemsCount} ${isVi ? "mục luyện" : "个练习"}</small>
+    const itemsCount = dailyThemeItemsByType(theme, contentType.id).length;
+    const active = state.dailyContentType === contentType.id;
+    const disabled = itemsCount === 0;
+    const isWord = contentType.id === "word";
+    return `
+          <button class="hsk-study-part-card hsk-study-part-card--${isWord ? "word" : "sentence"} daily-study-part-card ${active ? "active" : ""}" data-daily-content-type="${contentType.id}" type="button" ${disabled ? "disabled" : ""}>
+            <span class="hsk-study-part-copy">
+              <strong>${isWord ? (isVi ? "Từ vựng" : "词汇") : (isVi ? "Câu" : "句子")}</strong>
+              <small>${itemsCount} ${isWord ? (isVi ? "từ vựng" : "词") : (isVi ? "câu" : "句")}</small>
+              <em>${isWord ? `${iconSvg("book-open")} ${isVi ? "Sẵn sàng học" : "准备学习"}` : `${iconSvg("message")} ${itemsCount} ${isVi ? "mục" : "项"}`}</em>
             </span>
-            <span class="arrow-icon">›</span>
+            <span class="hsk-study-part-art" aria-hidden="true">
+              ${isWord ? `
+                <i class="hsk-word-book">生<br>词<br>本</i>
+                <i class="hsk-word-card hsk-word-card-main">词<b>cí</b></i>
+                <i class="hsk-word-card hsk-word-card-back">旅<b>lǚ</b></i>
+              ` : `
+                <i class="hsk-sentence-chat">•••</i>
+                <i class="hsk-sentence-strip hsk-sentence-strip-a">你去哪儿？</i>
+                <i class="hsk-sentence-strip hsk-sentence-strip-b">我去图书馆。</i>
+                <i class="hsk-sentence-pencil"></i>
+              `}
+            </span>
+            <span class="hsk-study-part-arrow" aria-hidden="true">${iconSvg("arrow-right")}</span>
           </button>
         `;
-      }).join("")}
+  }).join("")}
     </div>
   `;
 }
 
 function renderHskCourse() {
   if (state.hskLevelPicker) {
-    screens.course.innerHTML = renderHskLevelPickerHTML();
+    setScreenWithDesktopShell("course", renderHskLevelPickerHTML(), "app-desktop-shell--course", "hsk");
     return;
   }
 
@@ -2855,8 +4511,8 @@ function renderHskCourse() {
     ? (isVi ? "Quay lại danh sách bài" : "返回课程列表")
     : (isVi ? "Quay lại chọn cấp độ" : "返回等级选择");
 
-  screens.course.innerHTML = `
-    <section class="hsk-lesson-screen">
+  setScreenWithDesktopShell("course", `
+    <section class="hsk-lesson-screen hsk-lesson-screen--${String(state.level || "").toLowerCase()}">
       <div class="hsk-lesson-hero">
         <button class="hsk-lesson-back-btn" ${heroBackAttr} type="button" aria-label="${heroBackLabel}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
@@ -2898,7 +4554,7 @@ function renderHskCourse() {
         `}
       </div>
     </section>
-  `;
+  `, "app-desktop-shell--course", "hsk");
   return;
 
   screens.course.innerHTML = `
@@ -3062,24 +4718,10 @@ function renderDailyThemesListHTML() {
 
   return filteredThemes.length > 0 ? filteredThemes.map((theme) => {
     const cardMeta = getDailyThemeCardMeta(theme);
-    const themeIcon = getThemeIcon(cardMeta.visual);
+    const isLocked = isDailyThemeLockedForUser(theme.id);
     const countLabel = isVi ? "Mục luyện" : "个练习";
-    return `
-      <article class="daily-theme-card" data-theme="${theme.id}">
-        <div class="daily-theme-card-top">
-          <span class="daily-theme-icon-box" aria-hidden="true">${themeIcon}</span>
-          <span class="daily-theme-count-badge">${theme.items.length} ${countLabel}</span>
-        </div>
-        <h3 class="daily-theme-title">${cardMeta.title}</h3>
-        <p class="daily-theme-desc">${cardMeta.desc}</p>
-        <button class="daily-theme-enter-btn" type="button">
-          ${isVi ? "Vào học" : "开始学习"}
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>
-          </svg>
-        </button>
-      </article>
-    `;
+    const featuredConfig = getDailyFeaturedThemeConfig(theme);
+    return renderDailyFeaturedThemeCardHTML(theme, cardMeta, isLocked, countLabel, isVi, featuredConfig);
   }).join("") : `
     <div class="daily-no-results">
       ${isVi ? "Không tìm thấy chủ đề nào phù hợp." : "未找到符合的主题。"}
@@ -3090,27 +4732,27 @@ function renderDailyThemesListHTML() {
 function renderDailyCourse() {
   const isVi = state.lang === "vi";
   const pendingTheme = getDailyPendingTheme();
+  const pendingThemeConfig = pendingTheme ? getDailyFeaturedThemeConfig(pendingTheme) : null;
 
-  screens.course.innerHTML = `
+  setScreenWithDesktopShell("course", `
     <section class="daily-course-layout">
       ${pendingTheme ? `
-      <div class="hsk-content-type-section">
-        <div class="hsk-lessons-header">
-          <h2>${isVi ? "Chọn phần học" : "选择学习内容"}</h2>
-          <button class="hsk-back-to-lessons-btn" data-daily-back-themes type="button">${isVi ? "Danh sách chủ đề" : "主题列表"}</button>
+      <div class="daily-study-screen daily-study-screen--${pendingThemeConfig.tone}">
+        <button class="hsk-back-to-lessons-btn daily-study-back-btn" data-daily-back-themes type="button">${isVi ? "Danh sách chủ đề" : "主题列表"}</button>
+        <div class="hsk-study-part-section daily-study-part-section">
+          <div class="hsk-study-part-heading daily-study-part-heading">
+            <h2>${state.lang === "vi" ? pendingTheme.vi : pendingTheme.zh}</h2>
+            <p>${state.lang === "vi" ? pendingTheme.zh : pendingTheme.vi}</p>
+          </div>
+          ${renderDailyContentTypePickerHTML(pendingTheme)}
         </div>
-        <div class="hsk-selected-lesson-card">
-          <strong>${state.lang === "vi" ? pendingTheme.vi : pendingTheme.zh}</strong>
-          <span>${state.lang === "vi" ? pendingTheme.zh : pendingTheme.vi}</span>
-        </div>
-        ${renderDailyContentTypePickerHTML(pendingTheme)}
       </div>
       ` : `
       <header class="daily-course-header">
         <h1>${isVi ? "Chọn chủ đề giao tiếp" : "选择交流主题"}</h1>
         <p>${isVi
-    ? "Khám phá các tình huống giao tiếp thực tế và nâng cao khả năng phản xạ tiếng Trung của bạn qua từng chủ đề cụ thể."
-    : "探索真实交流场景，通过具体主题提升你的中文反应能力。"}</p>
+      ? "Khám phá các tình huống giao tiếp thực tế và nâng cao khả năng phản xạ tiếng Trung của bạn qua từng chủ đề cụ thể."
+      : "探索真实交流场景，通过具体主题提升你的中文反应能力。"}</p>
       </header>
 
       <div class="daily-theme-grid">
@@ -3118,7 +4760,7 @@ function renderDailyCourse() {
       </div>
       `}
     </section>
-  `;
+  `, "app-desktop-shell--course", "daily");
 }
 
 function stopSpeechPlayback() {
@@ -3358,11 +5000,11 @@ function getFilteredVocabItems() {
   const query = (state.vocabSearchQuery || "").trim().toLowerCase();
   if (query) {
     const normQuery = normalizeLatin(query);
-      savedList = savedList.filter(item =>
-        item.hanzi.toLowerCase().includes(query) ||
-        normalizeLatin(item.vi).includes(normQuery) ||
-        normalizeLatin(item.pinyin || item.tone || "").includes(normQuery)
-      );
+    savedList = savedList.filter(item =>
+      item.hanzi.toLowerCase().includes(query) ||
+      normalizeLatin(item.vi).includes(normQuery) ||
+      normalizeLatin(item.pinyin || item.tone || "").includes(normQuery)
+    );
   }
 
   if (state.vocabFilterTab === "word") {
@@ -3424,25 +5066,34 @@ function renderVocab() {
       ? (isVi ? "cụm từ" : "短语")
       : (isVi ? "từ vựng" : "个词");
 
-  screens.vocab.innerHTML = `
+  setScreenWithDesktopShell("vocab", `
     <div class="vocab-layout">
       <div class="vocab-page-heading">
-        <h1>${isVi ? "Từ vựng đã lưu" : "已保存词汇"}</h1>
-        <p>${isVi ? "Quản lý và ôn tập các từ vựng bạn đã đánh dấu. Hãy luyện tập thường xuyên để ghi nhớ lâu hơn!" : "管理并复习你收藏的词汇，常常练习会记得更久！"}</p>
-      </div>
-
-      <div class="vocab-control-bar">
-        <div class="vocab-visible-count">
-          ${isVi ? "Đang hiển thị" : "正在显示"} <strong>${visibleCount}</strong> <span>${visibleTypeLabel}</span>
+        <div class="vocab-title-book" aria-hidden="true">
+          <span class="vocab-title-book-back"></span>
+          <span class="vocab-title-book-cover">
+            <i class="vocab-title-book-ribbon"></i>
+            <b>生词本</b>
+            <em>★</em>
+          </span>
+          <span class="vocab-title-book-tag">★</span>
         </div>
-
-        <div class="vocab-type-tabs" aria-label="${isVi ? "Loại mục" : "类型"}">
-          <button class="${state.vocabFilterTab === "all" ? "active" : ""}" type="button" data-vocab-filter="all">${isVi ? "Tất cả" : "全部"}</button>
-          <button class="${state.vocabFilterTab === "word" ? "active" : ""}" type="button" data-vocab-filter="word">${isVi ? "Từ vựng" : "词汇"}</button>
-          <button class="${state.vocabFilterTab === "phrase" ? "active" : ""}" type="button" data-vocab-filter="phrase">${isVi ? "Cụm từ" : "短语"}</button>
+        <div class="vocab-heading-copy">
+          <h1>${isVi ? "Bộ lưu từ vựng" : "已保存词汇本"}</h1>
+          <p>${isVi ? "Quản lý và ôn tập nhanh các từ Pinyin bạn đã lưu" : "管理并快速复习你保存的拼音词汇"}</p>
         </div>
-
-        <button class="vocab-review-now-btn" type="button" data-vocab-review>
+        <div class="vocab-hero-decor" aria-hidden="true">
+          <span>ā</span><span>á</span><span>ǎ</span><span>à</span>
+        </div>
+        <div class="vocab-pinyin-pill" aria-hidden="true">
+          <span>ni hao</span>
+          <i>→</i>
+          <span>你好</span>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/>
+          </svg>
+        </div>
+        <button class="vocab-review-now-btn vocab-review-now-btn--hero" type="button" data-vocab-review>
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="9" />
             <path d="M10 8l6 4-6 4V8z" fill="currentColor" stroke="none" />
@@ -3451,11 +5102,30 @@ function renderVocab() {
         </button>
       </div>
 
+      <div class="vocab-control-bar">
+        <div class="vocab-visible-count">
+          <span class="vocab-count-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor">
+              <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5v-11z"/>
+              <path d="M12 7.2l1.1 2.1 2.4.4-1.8 1.7.4 2.4-2.1-1.1-2.1 1.1.4-2.4-1.8-1.7 2.4-.4L12 7.2z" fill="#ffffff"/>
+            </svg>
+          </span>
+          <span class="vocab-visible-count-text">${isVi ? "Đang hiển thị" : "正在显示"} <strong>${visibleCount}</strong> ${visibleTypeLabel}</span>
+        </div>
+
+        <div class="vocab-type-tabs" aria-label="${isVi ? "Loại mục" : "类型"}">
+          <button class="${state.vocabFilterTab === "all" ? "active" : ""}" type="button" data-vocab-filter="all">${isVi ? "Tất cả" : "全部"}</button>
+          <button class="${state.vocabFilterTab === "word" ? "active" : ""}" type="button" data-vocab-filter="word">${isVi ? "Từ vựng" : "词汇"}</button>
+          <button class="${state.vocabFilterTab === "phrase" ? "active" : ""}" type="button" data-vocab-filter="phrase">${isVi ? "Cụm từ" : "短语"}</button>
+        </div>
+
+      </div>
+
       <div class="vocab-grid">
         ${renderVocabListHTML()}
       </div>
     </div>
-  `;
+  `, "app-desktop-shell--vocab", "vocab");
 }
 
 function resetPractice() {
@@ -3471,6 +5141,15 @@ function resetPractice() {
 }
 
 function startPractice(options = {}) {
+  if (!requireLoginForPractice()) return;
+  if (options.lessonId && !canAccessHskLesson(options.lessonId)) {
+    promptUpgradeLocked();
+    return;
+  }
+  if (options.themeId && !canAccessDailyTheme(options.themeId)) {
+    promptUpgradeLocked();
+    return;
+  }
   if (Object.prototype.hasOwnProperty.call(options, "hskContentType")) {
     state.hskContentType = options.hskContentType || "";
   }
@@ -3496,6 +5175,14 @@ function startPractice(options = {}) {
   }
   state.mode = options.mode || "translate";
   state.index = options.index || 0;
+  if (state.module === "hsk" && !canAccessHskLessonItem(state.lessonId, state.index)) {
+    promptUpgradeLocked();
+    return;
+  }
+  if (state.module === "daily" && !canAccessDailyThemeItem(state.themeId, state.index)) {
+    promptUpgradeLocked();
+    return;
+  }
   state.score = 0;
   resetPractice();
   renderPractice();
@@ -3544,7 +5231,7 @@ function renderPractice() {
               </div>
             `;
   }).join("")
-          
+
     }
        
       </section>
@@ -3747,6 +5434,20 @@ function nextItem() {
     setScreen("complete");
     return;
   }
+  if (state.module === "hsk") {
+    const nextIndex = state.index + 1;
+    if (!canAccessHskLessonItem(state.lessonId, nextIndex)) {
+      promptUpgradeLocked();
+      return;
+    }
+  }
+  if (state.module === "daily") {
+    const nextIndex = state.index + 1;
+    if (!canAccessDailyThemeItem(state.themeId, nextIndex)) {
+      promptUpgradeLocked();
+      return;
+    }
+  }
   state.index += 1;
   resetPractice();
   renderPractice();
@@ -3847,10 +5548,16 @@ function burst() {
 }
 
 function bindEvents() {
-  $("#langToggle").addEventListener("click", () => {
+  $("#langToggle")?.addEventListener("click", () => {
     state.lang = state.lang === "vi" ? "zh" : "vi";
     saveState();
     renderAll();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.target?.id === "homeDesktopSearchInput" && event.key === "Enter") {
+      state.vocabSearchQuery = event.target.value.trim();
+      navigatePrimaryTab("vocab");
+    }
   });
   const menuToggleBtn = $("#menuToggleBtn");
   const mobileMenu = $("#mobileMenu");
@@ -3865,7 +5572,7 @@ function bindEvents() {
       navigatePrimaryTab(bottomNavBtn.dataset.bottomNav);
     }
   });
-  $("#backBtn").addEventListener("click", () => {
+  $("#backBtn")?.addEventListener("click", () => {
     if (state.screen === "practice" || state.screen === "complete") {
       renderCourse();
       setScreen("course");
@@ -3880,7 +5587,35 @@ function bindEvents() {
       setScreen("home");
     }
   });
-  $("#app").addEventListener("submit", (event) => {
+  $("#app").addEventListener("submit", async (event) => {
+    const accountForm = event.target.closest("#accountForm");
+    if (accountForm) {
+      event.preventDefault();
+      const fullName = accountForm.querySelector("#accountNameInput")?.value.trim();
+      const emailValue = accountForm.querySelector("#accountEmailInput")?.value.trim();
+      const nextLevel = accountForm.querySelector("#accountLevelInput")?.value;
+      const nextLang = accountForm.querySelector("#accountLangInput")?.value;
+      if (fullName) state.user.fullName = fullName;
+      if (emailValue) state.user.email = emailValue;
+      if (nextLevel) {
+        state.level = nextLevel;
+        state.user.currentLevel = nextLevel;
+      }
+      if (nextLang) state.lang = nextLang;
+      saveState();
+      try {
+        await persistAccountProfile();
+        renderChrome();
+        renderAccount();
+        if (state.screen === "course") renderCourse();
+        if (state.screen === "home") renderHome();
+        showToast(state.lang === "vi" ? "Đã lưu thông tin tài khoản" : "已保存账户信息");
+      } catch (error) {
+        showToast(error.message || (state.lang === "vi" ? "Không thể lưu thông tin tài khoản" : "无法保存账户信息"));
+      }
+      return;
+    }
+
     const adminLoginForm = event.target.closest("#adminLoginForm");
     if (!adminLoginForm) return;
     event.preventDefault();
@@ -3909,6 +5644,57 @@ function bindEvents() {
       });
   });
   $("#app").addEventListener("click", (event) => {
+    if (event.target.closest("[data-mobile-page-back]")) {
+      navigatePrimaryTab("home");
+      return;
+    }
+
+    if (event.target.closest("[data-home-login]")) {
+      showModal("login");
+      return;
+    }
+
+    const accountEditToggleBtn = event.target.closest("#accountEditToggleBtn");
+    if (accountEditToggleBtn && state.screen === "account") {
+      const accountFormActions = document.querySelector(".account-form-actions");
+      accountFormActions?.classList.remove("is-hidden");
+      accountFormActions?.removeAttribute("hidden");
+      return;
+    }
+
+    const cancelAccountPanel = event.target.closest("#cancelAccountPanel");
+    if (cancelAccountPanel && state.screen === "account") {
+      renderAccount();
+      return;
+    }
+
+    const accountUpgradeBtn = event.target.closest(".account-upgrade-btn");
+    if (accountUpgradeBtn && state.screen === "account") {
+      showUpgradePlansModal();
+      return;
+    }
+
+    const accountMobileGlobeBtn = event.target.closest("#accountMobileGlobeBtn");
+    if (accountMobileGlobeBtn && state.screen === "account") {
+      state.lang = state.lang === "vi" ? "zh" : "vi";
+      localStorage.setItem("v2-lang", state.lang);
+      renderChrome();
+      renderAccount();
+      return;
+    }
+
+    const accountAvatarEditBtn = event.target.closest("#accountAvatarEditBtn");
+    if (accountAvatarEditBtn) {
+      document.getElementById("accountAvatarInput")?.click();
+      return;
+    }
+
+    const accountChangePasswordBtn = event.target.closest("#accountChangePasswordBtn");
+    if (accountChangePasswordBtn) {
+      showToast(state.lang === "vi" ? "Tính năng đổi mật khẩu đang được phát triển" : "修改密码功能开发中");
+      return;
+    }
+
     // Mobile menu handlers
     const mobileHskBtn = event.target.closest("#mobileHskBtn");
     if (mobileHskBtn) {
@@ -3945,13 +5731,6 @@ function bindEvents() {
       $("#mobileMenu")?.classList.remove("active");
       return;
     }
-    const mobileSubscriptionsBtn = event.target.closest("#mobileSubscriptionsBtn");
-    if (mobileSubscriptionsBtn) {
-      state.fromRoadmap = false;
-      setScreen("subscriptions");
-      $("#mobileMenu")?.classList.remove("active");
-      return;
-    }
     const mobileAdminBtn = event.target.closest("#mobileAdminBtn");
     if (mobileAdminBtn) {
       if (BACKEND_DISABLED) {
@@ -3975,26 +5754,26 @@ function bindEvents() {
       if (!state.user) {
         showModal("login");
       } else {
-        showAccountPanel();
+        openAccountScreen();
       }
       $("#mobileMenu")?.classList.remove("active");
       return;
     }
     const registerBtn = event.target.closest("#registerBtn") || event.target.closest("#mobileRegisterBtn") || event.target.closest("#sidebarRegisterBtn");
     if (registerBtn) {
-      if (BACKEND_DISABLED) {
-        showToast(BACKEND_DISABLED_MESSAGE);
-        $("#mobileMenu")?.classList.remove("active");
-        return;
-      }
       if (state.user) {
-        state.user = null;
-        saveState();
-        renderChrome();
-      } else {
+        logoutCurrentUser();
+      } else if (!BACKEND_DISABLED) {
         showModal("register");
+      } else {
+        showToast(BACKEND_DISABLED_MESSAGE);
       }
       $("#mobileMenu")?.classList.remove("active");
+      return;
+    }
+
+    if (event.target.closest("#homeDesktopLogoutBtn")) {
+      logoutCurrentUser();
       return;
     }
 
@@ -4031,12 +5810,6 @@ function bindEvents() {
       setScreen("vocab");
       return;
     }
-    const navSubscriptionsBtn = event.target.closest("#navSubscriptionsBtn");
-    if (navSubscriptionsBtn) {
-      state.fromRoadmap = false;
-      setScreen("subscriptions");
-      return;
-    }
     const navAdminBtn = event.target.closest("#navAdminBtn");
     if (navAdminBtn) {
       if (BACKEND_DISABLED) {
@@ -4066,6 +5839,188 @@ function bindEvents() {
     if (adminSubscriptionsTabBtn) {
       state.adminTab = "subscriptions";
       renderAdmin();
+      return;
+    }
+
+    const adminContentTabBtn = event.target.closest("#adminContentTabBtn");
+    if (adminContentTabBtn) {
+      state.adminTab = "content";
+      renderAdmin();
+      loadAdminContentLocks();
+      return;
+    }
+
+    const adminContentLevelBtn = event.target.closest("[data-admin-content-level]");
+    if (adminContentLevelBtn) {
+      syncAdminHskContentLocksFromDOM();
+      state.adminContentLevel = adminContentLevelBtn.dataset.adminContentLevel;
+      renderAdmin();
+      return;
+    }
+
+    const adminContentModuleBtn = event.target.closest("[data-admin-content-module]");
+    if (adminContentModuleBtn) {
+      syncAdminHskContentLocksFromDOM();
+      syncAdminDailyContentLocksFromDOM();
+      syncAdminHskLevelCoversFromDOM();
+      state.adminContentModule = adminContentModuleBtn.dataset.adminContentModule;
+      renderAdmin();
+      return;
+    }
+
+    const adminContentHskPanelBtn = event.target.closest("[data-admin-content-hsk-panel]");
+    if (adminContentHskPanelBtn) {
+      syncAdminHskContentLocksFromDOM();
+      syncAdminHskLevelCoversFromDOM();
+      state.adminContentHskPanel = adminContentHskPanelBtn.dataset.adminContentHskPanel;
+      renderAdmin();
+      return;
+    }
+
+    const adminHskCoverResetBtn = event.target.closest("[data-admin-hsk-cover-reset]");
+    if (adminHskCoverResetBtn) {
+      const level = adminHskCoverResetBtn.dataset.adminHskCoverReset;
+      state.adminHskLevelCovers[level] = "";
+      const urlInput = document.querySelector(`[data-admin-hsk-cover-url="${level}"]`);
+      if (urlInput) urlInput.value = "";
+      updateAdminHskLevelCoverPreview(level);
+      return;
+    }
+
+    const adminContentDailyLockToggle = event.target.closest("[data-admin-content-daily-lock]");
+    if (adminContentDailyLockToggle && adminContentDailyLockToggle.matches("input[type='checkbox']")) {
+      updateAdminDailyLockConfig(adminContentDailyLockToggle.dataset.adminContentDailyLock, {
+        lockedForFree: adminContentDailyLockToggle.checked,
+      });
+      renderAdmin();
+      return;
+    }
+
+    const adminLockAllContentBtn = event.target.closest("#adminLockAllContentBtn");
+    if (adminLockAllContentBtn) {
+      if ((state.adminContentModule || "hsk") === "daily") {
+        dailyThemes.forEach((theme) => {
+          updateAdminDailyLockConfig(theme.id, { lockedForFree: false, freeItemLimit: 8 });
+        });
+      } else {
+        const level = state.adminContentLevel || "HSK2";
+        (hskLevels[level] || []).forEach((lesson) => {
+          updateAdminHskLockConfig(lesson.id, { freeItemLimit: 8 });
+        });
+      }
+      renderAdmin();
+      return;
+    }
+
+    const adminUnlockAllContentBtn = event.target.closest("#adminUnlockAllContentBtn");
+    if (adminUnlockAllContentBtn) {
+      if ((state.adminContentModule || "hsk") === "daily") {
+        dailyThemes.forEach((theme) => {
+          updateAdminDailyLockConfig(theme.id, { lockedForFree: false, freeItemLimit: 0 });
+        });
+      } else {
+        const level = state.adminContentLevel || "HSK2";
+        (hskLevels[level] || []).forEach((lesson) => {
+          updateAdminHskLockConfig(lesson.id, { freeItemLimit: 0 });
+        });
+      }
+      renderAdmin();
+      return;
+    }
+
+    const adminSaveContentLocksBtn = event.target.closest("#adminSaveContentLocksBtn");
+    if (adminSaveContentLocksBtn) {
+      const isVi = state.lang === "vi";
+      syncAdminHskContentLocksFromDOM();
+      syncAdminDailyContentLocksFromDOM();
+      const lessons = getHskLessonsCatalog().map((lesson) => {
+        const freeItemLimit = parseAdminFreeItemLimit(state.adminContentLocks[lesson.lessonId]?.freeItemLimit);
+        return {
+          ...lesson,
+          lockedForFree: freeItemLimit > 0,
+          freeItemLimit,
+        };
+      });
+      const themes = getDailyThemesCatalog().map((theme) => {
+        const dailyLimitInput = Array.from(document.querySelectorAll("[data-admin-content-daily-limit]"))
+          .find((input) => input.dataset.adminContentDailyLimit === theme.themeId);
+        const dailyConfig = state.adminContentDailyLocks[theme.themeId] || {};
+        const freeItemLimit = parseAdminFreeItemLimit(dailyLimitInput ? dailyLimitInput.value : dailyConfig.freeItemLimit);
+        return {
+          ...theme,
+          lockedForFree: dailyConfig.lockedForFree === true,
+          freeItemLimit,
+        };
+      });
+      state.adminContentStatus = isVi ? "Đang lưu cấu hình..." : "正在保存配置...";
+      renderAdmin();
+      const headers = { "X-Admin-User-Id": state.user?.id || "" };
+      Promise.all([
+        apiRequest("/api/admin/content/hsk-locks", {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ lessons }),
+        }),
+        apiRequest("/api/admin/content/daily-locks", {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ themes }),
+        }),
+      ])
+        .then(([hskData, dailyData]) => {
+          state.adminContentLocks = buildAdminContentLocksMap(hskData.locks || []);
+          state.adminContentDailyLocks = buildAdminContentDailyLocksMap(dailyData.locks || []);
+          const lockedHsk = (hskData.locks || []).filter((item) => Number(item.freeItemLimit || 0) > 0).length;
+          const lockedDaily = (dailyData.locks || []).filter((item) => item.lockedForFree || Number(item.freeItemLimit || 0) > 0).length;
+          state.adminContentStatus = isVi
+            ? `Đã lưu. ${lockedHsk} bài HSK có giới hạn Free và ${lockedDaily} chủ đề giao tiếp đang khóa.`
+            : `已保存。${lockedHsk} 个 HSK 课程限免配置和 ${lockedDaily} 个交际主题锁定。`;
+          loadContentLocks();
+          renderAdmin();
+        })
+        .catch((error) => {
+          state.adminContentStatus = error.message;
+          renderAdmin();
+        });
+      return;
+    }
+
+    const adminSaveHskLevelCoversBtn = event.target.closest("#adminSaveHskLevelCoversBtn");
+    if (adminSaveHskLevelCoversBtn) {
+      const isVi = state.lang === "vi";
+      syncAdminHskLevelCoversFromDOM();
+      const covers = HSK_LEVEL_IDS.map((level) => ({
+        level,
+        coverUrl: String(state.adminHskLevelCovers[level] || "").trim(),
+      }));
+      const tooLarge = covers.find((item) => item.coverUrl.startsWith("data:") && item.coverUrl.length > MAX_HSK_LEVEL_COVER_BYTES);
+      if (tooLarge) {
+        state.adminContentStatus = isVi
+          ? `Ảnh ${tooLarge.level} quá lớn. Hãy dùng file nhỏ hơn hoặc đặt ảnh vào thư mục assets.`
+          : `${tooLarge.level} 的图片太大，请压缩或使用 assets 路径。`;
+        renderAdmin();
+        return;
+      }
+      state.adminContentStatus = isVi ? "Đang lưu ảnh bìa..." : "正在保存封面...";
+      renderAdmin();
+      const headers = { "X-Admin-User-Id": state.user?.id || "" };
+      apiRequest("/api/admin/content/hsk-level-covers", {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ covers }),
+      })
+        .then((coverData) => {
+          state.adminHskLevelCovers = buildAdminHskLevelCoversMap(coverData.covers || []);
+          state.adminContentStatus = isVi ? "Đã lưu ảnh bìa các cấp HSK." : "已保存 HSK 等级封面。";
+          loadContentLocks().then(() => {
+            if (state.screen === "course" && state.hskLevelPicker) renderCourse();
+          });
+          renderAdmin();
+        })
+        .catch((error) => {
+          state.adminContentStatus = error.message;
+          renderAdmin();
+        });
       return;
     }
 
@@ -4118,11 +6073,46 @@ function bindEvents() {
       return;
     }
 
+    if (event.target.closest("#homeDesktopLangBtn")) {
+      state.lang = state.lang === "vi" ? "zh" : "vi";
+      saveState();
+      renderAll();
+      return;
+    }
+
     if (event.target.closest("#heroStartBtn")) {
       state.module = "hsk";
       state.hskLevelPicker = true;
       renderCourse();
       setScreen("course");
+      return;
+    }
+
+    const homeModuleBtn = event.target.closest("[data-home-module]");
+    if (homeModuleBtn) {
+      navigatePrimaryTab(homeModuleBtn.dataset.homeModule);
+      return;
+    }
+
+    const homeNavBtn = event.target.closest("[data-home-nav]");
+    if (homeNavBtn) {
+      const target = homeNavBtn.dataset.homeNav;
+      if (target === "account") openAccountScreen();
+      else if (target) navigatePrimaryTab(target);
+      return;
+    }
+
+    if (event.target.closest("#homeDesktopChallengeBtn, #homeMobileChallengeBtn")) {
+      state.module = "hsk";
+      state.hskLevelPicker = true;
+      renderCourse();
+      setScreen("course");
+      return;
+    }
+
+    const homeVocabCard = event.target.closest(".home-desktop-vocab-card, .home-mobile-vocab-card");
+    if (homeVocabCard && !event.target.closest(".vocab-speak-btn")) {
+      navigatePrimaryTab("vocab");
       return;
     }
 
@@ -4221,28 +6211,40 @@ function bindEvents() {
     }
     const hskContentTypeBtn = event.target.closest("[data-hsk-content-type]");
     if (hskContentTypeBtn) {
-      state.hskContentType = hskContentTypeBtn.dataset.hskContentType;
+      if (!requireLoginForPractice()) return;
       if (state.hskPendingLessonId) {
+        state.hskContentType = hskContentTypeBtn.dataset.hskContentType;
         startPractice({
           lessonId: state.hskPendingLessonId,
           mode: "translate",
           hskContentType: state.hskContentType,
         });
       } else {
+        state.hskContentType = hskContentTypeBtn.dataset.hskContentType;
         renderHskCourse();
       }
       return;
     }
     const lessonBtn = event.target.closest("[data-lesson]");
     if (lessonBtn) {
-      state.hskPendingLessonId = lessonBtn.dataset.lesson;
+      const lessonId = lessonBtn.dataset.lesson;
+      if (isHskLessonLockedForUser(lessonId)) {
+        promptHskLessonLocked();
+        return;
+      }
+      state.hskPendingLessonId = lessonId;
       state.hskContentType = "";
       renderHskCourse();
       return;
     }
     const themeBtn = event.target.closest("[data-theme]");
     if (themeBtn) {
-      state.dailyPendingThemeId = themeBtn.dataset.theme;
+      const themeId = themeBtn.dataset.theme;
+      if (isDailyThemeLockedForUser(themeId)) {
+        promptUpgradeLocked();
+        return;
+      }
+      state.dailyPendingThemeId = themeId;
       state.dailyContentType = "";
       renderDailyCourse();
       return;
@@ -4314,11 +6316,14 @@ function bindEvents() {
     // Redesigned HSK course click handlers
     const hskContinueBtn = event.target.closest("#hskContinueBtn");
     if (hskContinueBtn) {
-      const incompleteLesson = hskLevels[state.level].find(l => !state.completed.has(l.id)) || hskLevels[state.level][0];
+      const incompleteLesson = hskLevels[state.level].find((lesson) => !state.completed.has(lesson.id) && canAccessHskLesson(lesson.id))
+        || hskLevels[state.level].find((lesson) => canAccessHskLesson(lesson.id));
       if (incompleteLesson) {
         state.hskPendingLessonId = incompleteLesson.id;
         state.hskContentType = "";
         renderHskCourse();
+      } else if (hskLevels[state.level].some((lesson) => isHskLessonLockedForUser(lesson.id))) {
+        promptHskLessonLocked();
       }
       return;
     }
@@ -4339,11 +6344,14 @@ function bindEvents() {
     // Redesigned daily themes click handlers
     const dailyStartBtn = event.target.closest("#dailyStartBtn");
     if (dailyStartBtn) {
-      const firstTheme = dailyThemes.find(t => !state.completed.has(t.id)) || dailyThemes[0];
+      const firstTheme = dailyThemes.find((theme) => !state.completed.has(theme.id) && canAccessDailyTheme(theme.id))
+        || dailyThemes.find((theme) => canAccessDailyTheme(theme.id));
       if (firstTheme) {
         state.dailyPendingThemeId = firstTheme.id;
         state.dailyContentType = "";
         renderDailyCourse();
+      } else if (dailyThemes.some((theme) => isDailyThemeLockedForUser(theme.id))) {
+        promptUpgradeLocked();
       }
       return;
     }
@@ -4358,14 +6366,16 @@ function bindEvents() {
 
     const dailyContentTypeBtn = event.target.closest("[data-daily-content-type]");
     if (dailyContentTypeBtn) {
-      state.dailyContentType = dailyContentTypeBtn.dataset.dailyContentType;
+      if (!requireLoginForPractice()) return;
       if (state.dailyPendingThemeId) {
+        state.dailyContentType = dailyContentTypeBtn.dataset.dailyContentType;
         startPractice({
           themeId: state.dailyPendingThemeId,
           mode: "translate",
           dailyContentType: state.dailyContentType,
         });
       } else {
+        state.dailyContentType = dailyContentTypeBtn.dataset.dailyContentType;
         renderDailyCourse();
       }
       return;
@@ -4407,17 +6417,18 @@ function bindEvents() {
       if (gridContainer) {
         gridContainer.innerHTML = renderVocabListHTML();
       }
-      const visibleCount = $(".vocab-visible-count strong");
+      const visibleCount = $(".vocab-visible-count-text strong");
       if (visibleCount) {
         visibleCount.textContent = getFilteredVocabItems().length;
       }
-      const visibleType = $(".vocab-visible-count span");
+      const visibleType = $(".vocab-visible-count-text");
       if (visibleType) {
-        visibleType.textContent = state.vocabFilterTab === "all"
+        const nextTypeLabel = state.vocabFilterTab === "all"
           ? (state.lang === "vi" ? "mục đã lưu" : "个已保存项")
           : state.vocabFilterTab === "phrase"
             ? (state.lang === "vi" ? "cụm từ" : "短语")
             : (state.lang === "vi" ? "từ vựng" : "个词");
+        visibleType.innerHTML = `${state.lang === "vi" ? "Đang hiển thị" : "正在显示"} <strong>${getFilteredVocabItems().length}</strong> ${nextTypeLabel}`;
       }
       return;
     }
@@ -4501,6 +6512,71 @@ function bindEvents() {
         gridContainer.innerHTML = renderVocabListHTML();
       }
     }
+    if (event.target.id === "adminUserSearchInput") {
+      state.adminUserSearch = event.target.value;
+      updateAdminUsersList();
+    }
+    if (event.target.matches?.("[data-admin-content-limit]")) {
+      updateAdminHskLockConfig(event.target.dataset.adminContentLimit, {
+        freeItemLimit: event.target.value,
+      });
+    }
+    if (event.target.matches?.("[data-admin-content-daily-limit]")) {
+      updateAdminDailyLockConfig(event.target.dataset.adminContentDailyLimit, {
+        freeItemLimit: event.target.value,
+      });
+    }
+    if (event.target.matches?.("[data-admin-hsk-cover-url]")) {
+      const level = event.target.dataset.adminHskCoverUrl;
+      state.adminHskLevelCovers[level] = String(event.target.value || "").trim();
+      updateAdminHskLevelCoverPreview(level);
+    }
+  });
+  $("#app").addEventListener("change", (event) => {
+    if (event.target.id === "accountAvatarInput") {
+      updateAccountAvatar(event.target.files?.[0], event.target);
+      return;
+    }
+    if (event.target.matches?.("[data-admin-content-limit]")) {
+      updateAdminHskLockConfig(event.target.dataset.adminContentLimit, {
+        freeItemLimit: event.target.value,
+      });
+    }
+    if (event.target.matches?.("[data-admin-content-daily-limit]")) {
+      updateAdminDailyLockConfig(event.target.dataset.adminContentDailyLimit, {
+        freeItemLimit: event.target.value,
+      });
+    }
+    if (event.target.matches?.("[data-admin-hsk-cover-file]")) {
+      const level = event.target.dataset.adminHskCoverFile;
+      const file = event.target.files?.[0];
+      if (!level || !file) return;
+      if (!file.type.startsWith("image/")) {
+        showToast(state.lang === "vi" ? "Vui lòng chọn file ảnh." : "请选择图片文件。");
+        return;
+      }
+      if (file.size > MAX_HSK_LEVEL_COVER_BYTES) {
+        showToast(state.lang === "vi" ? "Ảnh quá lớn (tối đa ~900KB)." : "图片太大（最大约 900KB）。");
+        event.target.value = "";
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        state.adminHskLevelCovers[level] = String(reader.result || "");
+        const urlInput = document.querySelector(`[data-admin-hsk-cover-url="${level}"]`);
+        if (urlInput) urlInput.value = state.adminHskLevelCovers[level];
+        updateAdminHskLevelCoverPreview(level);
+      };
+      reader.readAsDataURL(file);
+    }
+    if (event.target.id === "adminUserLevelFilter") {
+      state.adminUserLevelFilter = event.target.value;
+      updateAdminUsersList();
+    }
+    if (event.target.id === "adminUserPlanFilter") {
+      state.adminUserPlanFilter = event.target.value;
+      updateAdminUsersList();
+    }
   });
   document.addEventListener("keydown", (event) => {
     if (event.target?.id === "answerInput") return;
@@ -4519,21 +6595,24 @@ function renderAll() {
   if (state.screen === "complete") renderComplete();
   if (state.screen === "admin") renderAdmin();
   if (state.screen === "vocab") renderVocab();
+  if (state.screen === "account") renderAccount();
 }
 
 function init() {
   console.info(VIETNAMESE_QA_HOOK);
   bindEvents();
-  renderAll();
-  if (window.location.pathname === "/admin") {
-    renderAdmin();
-    setScreen("admin");
-    if (isAdminUser()) {
-      loadAdminUsers();
+  loadContentLocks().finally(() => {
+    renderAll();
+    if (window.location.pathname === "/admin") {
+      renderAdmin();
+      setScreen("admin");
+      if (isAdminUser()) {
+        loadAdminUsers();
+      }
+    } else {
+      setScreen("home");
     }
-  } else {
-    setScreen("home");
-  }
+  });
 }
 
 init();

@@ -1,6 +1,6 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
-import { DEFAULT_PAYMENT_PLANS, PaymentPlan, formatVnd } from './payment-plans';
+import { DEFAULT_PAYMENT_PLANS, PaymentPlan, formatVnd, normalizeDurationUnit } from './payment-plans';
 
 export interface AdminPaymentPlan extends PaymentPlan {
   isActive: boolean;
@@ -19,6 +19,7 @@ export class PaymentPlansService {
     return {
       id: row.id,
       months: Number(row.months),
+      durationUnit: normalizeDurationUnit(row.duration_unit),
       amount: Number(row.amount),
       nameVi: row.name_vi,
       nameZh: row.name_zh,
@@ -33,7 +34,7 @@ export class PaymentPlansService {
 
   async getPlan(planId: string): Promise<PaymentPlan | null> {
     const result = await this.db.query(
-      `SELECT id, months, amount, name_vi, name_zh
+      `SELECT id, months, duration_unit, amount, name_vi, name_zh
        FROM payment_plans
        WHERE id = $1 AND is_active = TRUE`,
       [planId],
@@ -43,7 +44,7 @@ export class PaymentPlansService {
 
   async getPlanById(planId: string): Promise<PaymentPlan | null> {
     const result = await this.db.query(
-      `SELECT id, months, amount, name_vi, name_zh
+      `SELECT id, months, duration_unit, amount, name_vi, name_zh
        FROM payment_plans
        WHERE id = $1`,
       [planId],
@@ -56,6 +57,7 @@ export class PaymentPlansService {
     return {
       id: row.id,
       months: Number(row.months),
+      durationUnit: normalizeDurationUnit(row.duration_unit),
       amount: Number(row.amount),
       nameVi: row.name_vi,
       nameZh: row.name_zh,
@@ -64,7 +66,7 @@ export class PaymentPlansService {
 
   async listActivePlans() {
     const result = await this.db.query(
-      `SELECT id, months, amount, name_vi, name_zh, sort_order
+      `SELECT id, months, duration_unit, amount, name_vi, name_zh, sort_order
        FROM payment_plans
        WHERE is_active = TRUE
        ORDER BY sort_order ASC, created_at ASC`,
@@ -72,6 +74,7 @@ export class PaymentPlansService {
     return result.rows.map((row) => ({
       id: row.id,
       months: Number(row.months),
+      durationUnit: normalizeDurationUnit(row.duration_unit),
       amount: Number(row.amount),
       sortOrder: Number(row.sort_order),
       priceLabel: formatVnd(Number(row.amount)),
@@ -95,6 +98,7 @@ export class PaymentPlansService {
   async createPlan(body: {
     id: string;
     months: number;
+    durationUnit?: string;
     amount: number;
     nameVi: string;
     nameZh: string;
@@ -103,6 +107,7 @@ export class PaymentPlansService {
   }) {
     const id = String(body.id || '').trim().toLowerCase();
     const months = Number(body.months);
+    const durationUnit = normalizeDurationUnit(body.durationUnit);
     const amount = Number(body.amount);
     const nameVi = String(body.nameVi || '').trim();
     const nameZh = String(body.nameZh || '').trim();
@@ -113,7 +118,10 @@ export class PaymentPlansService {
       throw new HttpException('Mã gói phải từ 2–20 ký tự (chữ thường, số, gạch ngang).', HttpStatus.BAD_REQUEST);
     }
     if (!Number.isInteger(months) || months < 1) {
-      throw new HttpException('Số tháng phải là số nguyên dương.', HttpStatus.BAD_REQUEST);
+      throw new HttpException('Thời hạn phải là số nguyên dương.', HttpStatus.BAD_REQUEST);
+    }
+    if (body.durationUnit !== undefined && body.durationUnit !== 'days' && body.durationUnit !== 'months') {
+      throw new HttpException('Đơn vị thời hạn phải là ngày hoặc tháng.', HttpStatus.BAD_REQUEST);
     }
     if (!Number.isInteger(amount) || amount < 1000) {
       throw new HttpException('Giá gói phải từ 1.000 VNĐ trở lên.', HttpStatus.BAD_REQUEST);
@@ -124,10 +132,10 @@ export class PaymentPlansService {
 
     try {
       const result = await this.db.query(
-        `INSERT INTO payment_plans (id, months, amount, name_vi, name_zh, is_active, sort_order)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO payment_plans (id, months, duration_unit, amount, name_vi, name_zh, is_active, sort_order)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING *, 0 AS buyer_count`,
-        [id, months, amount, nameVi, nameZh, isActive, sortOrder],
+        [id, months, durationUnit, amount, nameVi, nameZh, isActive, sortOrder],
       );
       return { plan: this.mapRow(result.rows[0]) };
     } catch (error: any) {
@@ -142,6 +150,7 @@ export class PaymentPlansService {
     id: string,
     body: {
       months?: number;
+      durationUnit?: string;
       amount?: number;
       nameVi?: string;
       nameZh?: string;
@@ -155,6 +164,7 @@ export class PaymentPlansService {
     }
 
     const months = body.months !== undefined ? Number(body.months) : undefined;
+    const durationUnit = body.durationUnit !== undefined ? normalizeDurationUnit(body.durationUnit) : undefined;
     const amount = body.amount !== undefined ? Number(body.amount) : undefined;
     const nameVi = body.nameVi !== undefined ? String(body.nameVi).trim() : undefined;
     const nameZh = body.nameZh !== undefined ? String(body.nameZh).trim() : undefined;
@@ -162,7 +172,10 @@ export class PaymentPlansService {
     const sortOrder = body.sortOrder !== undefined ? Number(body.sortOrder) : undefined;
 
     if (months !== undefined && (!Number.isInteger(months) || months < 1)) {
-      throw new HttpException('Số tháng phải là số nguyên dương.', HttpStatus.BAD_REQUEST);
+      throw new HttpException('Thời hạn phải là số nguyên dương.', HttpStatus.BAD_REQUEST);
+    }
+    if (body.durationUnit !== undefined && body.durationUnit !== 'days' && body.durationUnit !== 'months') {
+      throw new HttpException('Đơn vị thời hạn phải là ngày hoặc tháng.', HttpStatus.BAD_REQUEST);
     }
     if (amount !== undefined && (!Number.isInteger(amount) || amount < 1000)) {
       throw new HttpException('Giá gói phải từ 1.000 VNĐ trở lên.', HttpStatus.BAD_REQUEST);
@@ -177,15 +190,16 @@ export class PaymentPlansService {
     const result = await this.db.query(
       `UPDATE payment_plans
        SET months = COALESCE($2, months),
-           amount = COALESCE($3, amount),
-           name_vi = COALESCE($4, name_vi),
-           name_zh = COALESCE($5, name_zh),
-           is_active = COALESCE($6, is_active),
-           sort_order = COALESCE($7, sort_order),
+           duration_unit = COALESCE($3, duration_unit),
+           amount = COALESCE($4, amount),
+           name_vi = COALESCE($5, name_vi),
+           name_zh = COALESCE($6, name_zh),
+           is_active = COALESCE($7, is_active),
+           sort_order = COALESCE($8, sort_order),
            updated_at = NOW()
        WHERE id = $1
        RETURNING *`,
-      [id, months ?? null, amount ?? null, nameVi ?? null, nameZh ?? null, isActive ?? null, sortOrder ?? null],
+      [id, months ?? null, durationUnit ?? null, amount ?? null, nameVi ?? null, nameZh ?? null, isActive ?? null, sortOrder ?? null],
     );
 
     const buyerCount = await this.db.query(
@@ -222,16 +236,98 @@ export class PaymentPlansService {
     return { ok: true };
   }
 
-  static seedPlansSql() {
-    const values = DEFAULT_PAYMENT_PLANS.map(
-      (plan, index) =>
-        `('${plan.id}', ${plan.months}, ${plan.amount}, '${plan.nameVi.replace(/'/g, "''")}', '${plan.nameZh.replace(/'/g, "''")}', TRUE, ${index + 1})`,
-    ).join(',\n        ');
-    return `
-      INSERT INTO payment_plans (id, months, amount, name_vi, name_zh, is_active, sort_order)
-      VALUES
-        ${values}
-      ON CONFLICT (id) DO NOTHING;
-    `;
+  async getAdminStats() {
+    const revenueResult = await this.db.query(`
+      SELECT
+        COALESCE(SUM(amount), 0)::bigint AS total_revenue,
+        COALESCE(SUM(amount) FILTER (
+          WHERE paid_at >= date_trunc('month', NOW())
+        ), 0)::bigint AS revenue_this_month,
+        COALESCE(SUM(amount) FILTER (
+          WHERE paid_at >= date_trunc('month', NOW()) - interval '1 month'
+            AND paid_at < date_trunc('month', NOW())
+        ), 0)::bigint AS revenue_last_month
+      FROM payment_orders
+      WHERE status = 'paid'
+    `);
+
+    const usersResult = await this.db.query(`
+      SELECT COUNT(*)::int AS active_premium_users
+      FROM users
+      WHERE is_premium = TRUE
+        AND (premium_until IS NULL OR premium_until > NOW())
+    `);
+
+    const weekResult = await this.db.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE paid_at >= date_trunc('week', NOW()))::int AS paid_this_week,
+        COUNT(*) FILTER (
+          WHERE paid_at >= date_trunc('week', NOW()) - interval '1 week'
+            AND paid_at < date_trunc('week', NOW())
+        )::int AS paid_last_week
+      FROM payment_orders
+      WHERE status = 'paid'
+    `);
+
+    const renewalResult = await this.db.query(`
+      SELECT
+        COUNT(*)::int AS total_buyers,
+        COUNT(*) FILTER (WHERE order_count >= 2)::int AS renewing_buyers
+      FROM (
+        SELECT user_id, COUNT(*)::int AS order_count
+        FROM payment_orders
+        WHERE status = 'paid'
+        GROUP BY user_id
+      ) buyers
+    `);
+
+    const recentResult = await this.db.query(`
+      SELECT o.id, o.amount, o.paid_at, o.plan_id,
+             u.full_name, u.email,
+             p.name_vi AS plan_name_vi
+      FROM payment_orders o
+      JOIN users u ON u.id = o.user_id
+      LEFT JOIN payment_plans p ON p.id = o.plan_id
+      WHERE o.status = 'paid'
+      ORDER BY o.paid_at DESC NULLS LAST
+      LIMIT 8
+    `);
+
+    const revenueRow = revenueResult.rows[0];
+    const totalRevenue = Number(revenueRow?.total_revenue || 0);
+    const thisMonth = Number(revenueRow?.revenue_this_month || 0);
+    const lastMonth = Number(revenueRow?.revenue_last_month || 0);
+    const revenueGrowthPercent = lastMonth > 0
+      ? Math.round(((thisMonth - lastMonth) / lastMonth) * 1000) / 10
+      : (thisMonth > 0 ? 100 : 0);
+
+    const activePremiumUsers = Number(usersResult.rows[0]?.active_premium_users || 0);
+    const paidThisWeek = Number(weekResult.rows[0]?.paid_this_week || 0);
+    const paidLastWeek = Number(weekResult.rows[0]?.paid_last_week || 0);
+    const weekGrowthPercent = paidLastWeek > 0
+      ? Math.round(((paidThisWeek - paidLastWeek) / paidLastWeek) * 1000) / 10
+      : (paidThisWeek > 0 ? 100 : 0);
+
+    const totalBuyers = Number(renewalResult.rows[0]?.total_buyers || 0);
+    const renewingBuyers = Number(renewalResult.rows[0]?.renewing_buyers || 0);
+    const renewalRatePercent = totalBuyers > 0
+      ? Math.round((renewingBuyers / totalBuyers) * 1000) / 10
+      : 0;
+
+    return {
+      totalRevenue,
+      revenueGrowthPercent,
+      activePremiumUsers,
+      weekGrowthPercent,
+      renewalRatePercent,
+      recentTransactions: recentResult.rows.map((tx) => ({
+        id: tx.id,
+        userName: tx.full_name,
+        userEmail: tx.email,
+        planName: tx.plan_name_vi || tx.plan_id,
+        amount: Number(tx.amount),
+        paidAt: tx.paid_at,
+      })),
+    };
   }
 }

@@ -1,7 +1,7 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import * as crypto from 'crypto';
-import { formatVnd } from './payment-plans';
+import { applyPlanDuration, formatVnd } from './payment-plans';
 import { PaymentPlansService } from './payment-plans.service';
 
 export interface SepayWebhookPayload {
@@ -303,8 +303,7 @@ export class PaymentService {
       const now = new Date();
       const currentEnd = user?.premium_until ? new Date(user.premium_until) : null;
       const base = currentEnd && currentEnd > now ? currentEnd : now;
-      const premiumUntil = new Date(base);
-      premiumUntil.setMonth(premiumUntil.getMonth() + plan.months);
+      const premiumUntil = applyPlanDuration(base, plan);
 
       await client.query(
         `UPDATE payment_orders

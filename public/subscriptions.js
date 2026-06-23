@@ -7,12 +7,13 @@ const planDialogTitle = document.querySelector("#planDialogTitle");
 const planIdInput = document.querySelector("#planIdInput");
 const planNameViInput = document.querySelector("#planNameViInput");
 const planNameZhInput = document.querySelector("#planNameZhInput");
-const planMonthsInput = document.querySelector("#planMonthsInput");
+const planDurationInput = document.querySelector("#planDurationInput");
+const planDurationUnitSelect = document.querySelector("#planDurationUnitSelect");
 const planAmountInput = document.querySelector("#planAmountInput");
 const planStatusSelect = document.querySelector("#planStatusSelect");
 const planSortInput = document.querySelector("#planSortInput");
 const toast = document.querySelector("#toast");
-const activePlansMetric = document.querySelector("#activePlansMetric");
+const recentTransactionsList = document.querySelector("#recentTransactionsList");
 
 let editingPlanId = null;
 let plans = [];
@@ -68,10 +69,137 @@ function adminHeaders() {
   return { "X-Admin-User-Id": adminUserId };
 }
 
-function planBadge(months) {
-  const value = Number(months) || 0;
+function formatPercent(value) {
+  const number = Number(value || 0);
+  const sign = number > 0 ? "+" : "";
+  return `${sign}${number.toLocaleString("vi-VN", { maximumFractionDigits: 1 })}%`;
+}
+
+function formatTransactionTime(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+  }).format(date);
+}
+
+function setMetricTrend(element, value, positiveText, negativeText, neutralText) {
+  if (!element) return;
+  const number = Number(value || 0);
+  element.classList.remove("stable", "neutral", "down");
+  if (number > 0) {
+    element.textContent = positiveText.replace("{value}", formatPercent(number));
+  } else if (number < 0) {
+    element.classList.add("down");
+    element.textContent = negativeText.replace("{value}", formatPercent(number));
+  } else {
+    element.classList.add("neutral");
+    element.textContent = neutralText;
+  }
+}
+
+function renderStats(stats) {
+  const totalRevenueMetric = document.querySelector("#totalRevenueMetric");
+  const revenueGrowthMetric = document.querySelector("#revenueGrowthMetric");
+  const activeUsersMetric = document.querySelector("#activeUsersMetric");
+  const activeUsersGrowthMetric = document.querySelector("#activeUsersGrowthMetric");
+  const renewalRateMetric = document.querySelector("#renewalRateMetric");
+  const renewalStatusMetric = document.querySelector("#renewalStatusMetric");
+
+  if (totalRevenueMetric) {
+    totalRevenueMetric.textContent = formatAmount(stats?.totalRevenue || 0);
+  }
+
+  setMetricTrend(
+    revenueGrowthMetric,
+    stats?.revenueGrowthPercent,
+    "{value} tháng này",
+    "{value} tháng này",
+    "Chưa có doanh thu tháng này",
+  );
+
+  if (activeUsersMetric) {
+    activeUsersMetric.textContent = formatAmount(stats?.activePremiumUsers || 0);
+  }
+
+  setMetricTrend(
+    activeUsersGrowthMetric,
+    stats?.weekGrowthPercent,
+    "Tăng {value} so với tuần trước",
+    "Giảm {value} so với tuần trước",
+    "Chưa có giao dịch tuần này",
+  );
+
+  if (renewalRateMetric) {
+    renewalRateMetric.textContent = `${Number(stats?.renewalRatePercent || 0).toLocaleString("vi-VN", { maximumFractionDigits: 1 })}%`;
+  }
+
+  if (renewalStatusMetric) {
+    const rate = Number(stats?.renewalRatePercent || 0);
+    renewalStatusMetric.classList.remove("stable", "neutral", "down");
+    if (rate >= 60) {
+      renewalStatusMetric.classList.add("stable");
+      renewalStatusMetric.textContent = "Đang ở mức ổn định";
+    } else if (rate > 0) {
+      renewalStatusMetric.classList.add("neutral");
+      renewalStatusMetric.textContent = "Cần cải thiện tỷ lệ gia hạn";
+    } else {
+      renewalStatusMetric.classList.add("neutral");
+      renewalStatusMetric.textContent = "Chưa có dữ liệu gia hạn";
+    }
+  }
+}
+
+function renderRecentTransactions(transactions) {
+  if (!recentTransactionsList) return;
+
+  if (!transactions?.length) {
+    recentTransactionsList.innerHTML = `<p class="transaction-empty">Chưa có giao dịch thanh toán.</p>`;
+    return;
+  }
+
+  recentTransactionsList.innerHTML = transactions.map((tx) => `
+    <article class="transaction-item">
+      <div class="transaction-avatar">${escapeHtml(String(tx.userName || tx.userEmail || "U").charAt(0).toUpperCase())}</div>
+      <div>
+        <strong>${escapeHtml(tx.userName || tx.userEmail || "Khách hàng")}</strong>
+        <span>${escapeHtml(tx.planName || "Gói Pro")} - ${formatTransactionTime(tx.paidAt)}</span>
+      </div>
+      <p>+${formatAmount(tx.amount)}đ</p>
+    </article>
+  `).join("");
+}
+
+async function loadStats() {
+  try {
+    const data = await apiRequest("/api/admin/plans/stats", {
+      headers: adminHeaders(),
+    });
+    renderStats(data.stats || {});
+    renderRecentTransactions(data.stats?.recentTransactions || []);
+  } catch (error) {
+    renderStats({});
+    if (recentTransactionsList) {
+      recentTransactionsList.innerHTML = `<p class="transaction-empty">${escapeHtml(error.message)}</p>`;
+    }
+  }
+}
+
+function planBadge(plan) {
+  const value = Number(plan.months) || 0;
+  if (plan.durationUnit === "days") return `${value}D`;
   if (value >= 12) return `${Math.round(value / 12)}Y`;
   return `${value}M`;
+}
+
+function formatPlanDuration(plan) {
+  const value = Number(plan.months) || 0;
+  if (plan.durationUnit === "days") return `${value} ngày`;
+  return `${value} tháng`;
 }
 
 function renderPlans() {
@@ -89,8 +217,9 @@ function renderPlans() {
   planTableBody.innerHTML = plans.map((plan) => `
     <div class="plan-row" role="row" data-plan-id="${escapeHtml(plan.id)}">
       <span class="plan-name" role="cell">
-        <i>${escapeHtml(planBadge(plan.months))}</i>
+        <i>${escapeHtml(planBadge(plan))}</i>
         ${escapeHtml(plan.nameVi)}
+        <small>${escapeHtml(formatPlanDuration(plan))}</small>
       </span>
       <span role="cell">${formatAmount(plan.amount)}</span>
       <span role="cell">${formatAmount(plan.buyerCount || 0)}</span>
@@ -103,14 +232,6 @@ function renderPlans() {
       </span>
     </div>
   `).join("");
-
-  if (activePlansMetric) {
-    activePlansMetric.textContent = String(plans.filter((plan) => plan.isActive).length);
-  }
-  const totalPlansMetric = document.querySelector("#totalPlansMetric");
-  if (totalPlansMetric) {
-    totalPlansMetric.textContent = String(plans.length);
-  }
 }
 
 function escapeHtml(value) {
@@ -132,7 +253,8 @@ function openPlanDialog(plan = null) {
   }
   if (planNameViInput) planNameViInput.value = plan?.nameVi || "";
   if (planNameZhInput) planNameZhInput.value = plan?.nameZh || "";
-  if (planMonthsInput) planMonthsInput.value = plan?.months ?? "";
+  if (planDurationInput) planDurationInput.value = plan?.months ?? "";
+  if (planDurationUnitSelect) planDurationUnitSelect.value = plan?.durationUnit === "days" ? "days" : "months";
   if (planAmountInput) planAmountInput.value = plan ? formatAmount(plan.amount) : "";
   if (planStatusSelect) planStatusSelect.value = plan?.isActive === false ? "hidden" : "active";
   if (planSortInput) planSortInput.value = plan?.sortOrder ?? plans.length + 1;
@@ -163,7 +285,8 @@ async function savePlan(event) {
     id: planIdInput?.value.trim().toLowerCase() || "",
     nameVi: planNameViInput?.value.trim() || "",
     nameZh: planNameZhInput?.value.trim() || "",
-    months: Number(planMonthsInput?.value || 0),
+    months: Number(planDurationInput?.value || 0),
+    durationUnit: planDurationUnitSelect?.value === "days" ? "days" : "months",
     amount: parseAmount(planAmountInput?.value),
     isActive: planStatusSelect?.value !== "hidden",
     sortOrder: Number(planSortInput?.value || 0),
@@ -186,7 +309,7 @@ async function savePlan(event) {
       showToast("Đã thêm gói mới.");
     }
     planDialog?.close();
-    await loadPlans();
+    await Promise.all([loadPlans(), loadStats()]);
   } catch (error) {
     showToast(error.message, true);
   }
@@ -203,7 +326,7 @@ async function deletePlan(planId) {
       headers: adminHeaders(),
     });
     showToast("Đã xóa gói.");
-    await loadPlans();
+    await Promise.all([loadPlans(), loadStats()]);
   } catch (error) {
     showToast(error.message, true);
   }
@@ -233,11 +356,12 @@ planTableBody?.addEventListener("click", (event) => {
 
 downloadCsvBtn?.addEventListener("click", () => {
   const csv = [
-    "Ma goi,Ten goi,Thang,Gia VND,Trang thai,Nguoi mua",
+    "Ma goi,Ten goi,Thoi han,Don vi,Gia VND,Trang thai,Nguoi mua",
     ...plans.map((plan) => [
       plan.id,
       plan.nameVi,
       plan.months,
+      plan.durationUnit === "days" ? "Ngay" : "Thang",
       plan.amount,
       plan.isActive ? "Dang ban" : "Tam an",
       plan.buyerCount || 0,
@@ -254,3 +378,4 @@ downloadCsvBtn?.addEventListener("click", () => {
 });
 
 loadPlans();
+loadStats();

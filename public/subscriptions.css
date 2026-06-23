@@ -189,7 +189,39 @@ button {
 }
 
 .metric-card small.stable::before {
-  content: "⊙ ";
+  content: "✓ ";
+}
+
+.metric-card small.neutral {
+  color: #64748b;
+}
+
+.metric-card small.neutral::before {
+  content: "";
+}
+
+.metric-card small.down {
+  color: #dc2626;
+}
+
+.metric-card small.down::before {
+  content: "↘ ";
+}
+
+.metric-unit {
+  display: block;
+  margin-top: 7px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.transaction-empty {
+  margin: 0;
+  padding: 12px 28px 24px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .dashboard-grid {
@@ -387,13 +419,23 @@ mark.inactive {
   gap: 14px;
 }
 
-.transaction-item img {
+.transaction-item img,
+.transaction-item .transaction-avatar {
   width: 48px;
   height: 48px;
   border-radius: 50%;
   object-fit: cover;
   border: 2px solid #eef4f8;
   background: #d7ede6;
+}
+
+.transaction-item .transaction-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--green);
+  font-size: 16px;
+  font-weight: 800;
 }
 
 .transaction-item strong,
@@ -514,6 +556,20 @@ mark.inactive {
 .plan-dialog select:focus {
   border-color: var(--green);
   box-shadow: 0 0 0 3px rgba(0, 122, 90, 0.12);
+}
+
+.duration-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px;
+  gap: 10px;
+}
+
+.plan-name small {
+  display: block;
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .dialog-submit {

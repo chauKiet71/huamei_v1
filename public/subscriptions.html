@@ -30,26 +30,26 @@
       <article class="metric-card">
         <span class="metric-icon icon-wallet" aria-hidden="true">VN</span>
         <div>
-          <p>Tổng gói</p>
-          <strong id="totalPlansMetric">—</strong>
-          <span>gói</span>
-          <small>Quản lý trực tiếp trên hệ thống</small>
+          <p>Tổng doanh thu</p>
+          <strong id="totalRevenueMetric">—</strong>
+          <span class="metric-unit">VNĐ</span>
+          <small id="revenueGrowthMetric">—</small>
         </div>
       </article>
       <article class="metric-card">
         <span class="metric-icon icon-users" aria-hidden="true">U</span>
         <div>
           <p>Gói đang hoạt động</p>
-          <strong><span id="activePlansMetric">—</span> <em>Plans</em></strong>
-          <small>Hiển thị cho người dùng khi đang bán</small>
+          <strong><span id="activeUsersMetric">—</span> <em>Users</em></strong>
+          <small id="activeUsersGrowthMetric" class="neutral">—</small>
         </div>
       </article>
       <article class="metric-card">
         <span class="metric-icon icon-renew" aria-hidden="true">R</span>
         <div>
-          <p>Thao tác</p>
-          <strong>CRUD</strong>
-          <small class="stable">Thêm, sửa, xóa gói đăng ký</small>
+          <p>Tỷ lệ gia hạn</p>
+          <strong id="renewalRateMetric">—</strong>
+          <small id="renewalStatusMetric" class="stable">—</small>
         </div>
       </article>
     </section>
@@ -80,35 +80,13 @@
         <div class="panel-heading">
           <div class="panel-title">
             <span class="title-icon" aria-hidden="true">↺</span>
-            <h2>Hướng dẫn</h2>
+            <h2>Giao dịch gần đây</h2>
           </div>
+          <span class="today-badge">Mới nhất</span>
         </div>
 
-        <div class="transaction-list plan-guide">
-          <article class="transaction-item">
-            <div>
-              <strong>Thêm gói mới</strong>
-              <span>Nhấn nút "Thêm gói mới" và điền mã, tên, số tháng, giá.</span>
-            </div>
-          </article>
-          <article class="transaction-item">
-            <div>
-              <strong>Chỉnh sửa</strong>
-              <span>Nhấn biểu tượng bút chì để cập nhật thông tin gói.</span>
-            </div>
-          </article>
-          <article class="transaction-item">
-            <div>
-              <strong>Xóa gói</strong>
-              <span>Chỉ xóa được gói chưa có giao dịch thanh toán.</span>
-            </div>
-          </article>
-          <article class="transaction-item">
-            <div>
-              <strong>Tạm ẩn</strong>
-              <span>Chuyển trạng thái sang "Tạm ẩn" để ngừng bán mà không xóa.</span>
-            </div>
-          </article>
+        <div class="transaction-list" id="recentTransactionsList">
+          <p class="transaction-empty">Đang tải giao dịch...</p>
         </div>
       </aside>
     </section>
@@ -133,8 +111,14 @@
         <input id="planNameZhInput" placeholder="12 个月" required />
       </label>
       <label>
-        Số tháng
-        <input id="planMonthsInput" type="number" min="1" step="1" placeholder="12" required />
+        Thời hạn
+        <span class="duration-input-row">
+          <input id="planDurationInput" type="number" min="1" step="1" placeholder="12" required />
+          <select id="planDurationUnitSelect" aria-label="Đơn vị thời hạn">
+            <option value="months">Tháng</option>
+            <option value="days">Ngày</option>
+          </select>
+        </span>
       </label>
       <label>
         Giá bán (VNĐ)

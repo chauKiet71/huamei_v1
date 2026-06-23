@@ -6,6 +6,21 @@ const { Pool } = pg;
 let pool;
 let schemaReady;
 
+function normalizeDurationUnit(value) {
+  return value === "days" ? "days" : "months";
+}
+
+function applyPlanDuration(base, plan) {
+  const result = new Date(base);
+  const value = Number(plan.months);
+  if (normalizeDurationUnit(plan.durationUnit) === "days") {
+    result.setDate(result.getDate() + value);
+  } else {
+    result.setMonth(result.getMonth() + value);
+  }
+  return result;
+}
+
 const DEFAULT_PAYMENT_PLANS = [
   { id: "1m", months: 1, amount: 149000, nameVi: "1 Tháng", nameZh: "1 个月" },
   { id: "3m", months: 3, amount: 399000, nameVi: "3 Tháng", nameZh: "3 个月" },
@@ -70,6 +85,7 @@ async function ensureSchema() {
         role TEXT NOT NULL DEFAULT 'student',
         is_active BOOLEAN NOT NULL DEFAULT TRUE,
         current_level TEXT NOT NULL DEFAULT 'HSK2',
+        avatar_url TEXT,
         is_premium BOOLEAN NOT NULL DEFAULT FALSE,
         premium_until TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -78,6 +94,7 @@ async function ensureSchema() {
       );
     `);
     await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS current_level TEXT NOT NULL DEFAULT 'HSK2';");
+    await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;");
     await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_premium BOOLEAN NOT NULL DEFAULT FALSE;");
     await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_until TIMESTAMPTZ;");
     await db.query(`
@@ -109,6 +126,7 @@ async function ensureSchema() {
       CREATE TABLE IF NOT EXISTS payment_plans (
         id TEXT PRIMARY KEY,
         months INTEGER NOT NULL,
+        duration_unit TEXT NOT NULL DEFAULT 'months',
         amount INTEGER NOT NULL,
         name_vi TEXT NOT NULL,
         name_zh TEXT NOT NULL,
@@ -118,6 +136,10 @@ async function ensureSchema() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
+    await db.query(`
+      ALTER TABLE payment_plans
+      ADD COLUMN IF NOT EXISTS duration_unit TEXT NOT NULL DEFAULT 'months';
+    `);
     for (const [index, plan] of DEFAULT_PAYMENT_PLANS.entries()) {
       await db.query(
         `INSERT INTO payment_plans (id, months, amount, name_vi, name_zh, is_active, sort_order)
@@ -126,6 +148,37 @@ async function ensureSchema() {
         [plan.id, plan.months, plan.amount, plan.nameVi, plan.nameZh, index + 1],
       );
     }
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS hsk_lesson_locks (
+        lesson_id TEXT PRIMARY KEY,
+        level TEXT NOT NULL,
+        lesson_no INTEGER NOT NULL DEFAULT 0,
+        title_vi TEXT NOT NULL DEFAULT '',
+        free_item_limit INTEGER NOT NULL DEFAULT 0,
+        locked_for_free BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.query(`
+      ALTER TABLE hsk_lesson_locks
+      ADD COLUMN IF NOT EXISTS free_item_limit INTEGER NOT NULL DEFAULT 0;
+    `);
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS daily_theme_locks (
+        theme_id TEXT PRIMARY KEY,
+        title_vi TEXT NOT NULL DEFAULT '',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        locked_for_free BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS hsk_level_covers (
+        level TEXT PRIMARY KEY,
+        cover_url TEXT NOT NULL DEFAULT '',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
   })();
   return schemaReady;
 }
@@ -153,6 +206,7 @@ function publicUser(row) {
     role: row.role,
     isActive: row.is_active,
     currentLevel: row.current_level || "HSK2",
+    avatarUrl: row.avatar_url || "",
     isPremium,
     plan: isPremium ? "PREMIUM" : "FREE",
     premiumUntil: row.premium_until || null,
@@ -168,7 +222,7 @@ function formatVnd(amount) {
 
 async function getPlanById(planId) {
   const result = await query(
-    `SELECT id, months, amount, name_vi, name_zh
+    `SELECT id, months, duration_unit, amount, name_vi, name_zh
      FROM payment_plans
      WHERE id = $1`,
     [planId],
@@ -178,6 +232,7 @@ async function getPlanById(planId) {
   return {
     id: row.id,
     months: Number(row.months),
+    durationUnit: normalizeDurationUnit(row.duration_unit),
     amount: Number(row.amount),
     nameVi: row.name_vi,
     nameZh: row.name_zh,
@@ -186,7 +241,7 @@ async function getPlanById(planId) {
 
 async function getPlan(planId) {
   const result = await query(
-    `SELECT id, months, amount, name_vi, name_zh
+    `SELECT id, months, duration_unit, amount, name_vi, name_zh
      FROM payment_plans
      WHERE id = $1 AND is_active = TRUE`,
     [planId],
@@ -196,6 +251,7 @@ async function getPlan(planId) {
   return {
     id: row.id,
     months: Number(row.months),
+    durationUnit: normalizeDurationUnit(row.duration_unit),
     amount: Number(row.amount),
     nameVi: row.name_vi,
     nameZh: row.name_zh,
@@ -206,6 +262,7 @@ function mapAdminPlan(row) {
   return {
     id: row.id,
     months: Number(row.months),
+    durationUnit: normalizeDurationUnit(row.duration_unit),
     amount: Number(row.amount),
     nameVi: row.name_vi,
     nameZh: row.name_zh,
@@ -226,6 +283,61 @@ function bankConfig() {
     accountName: env("SEPAY_BANK_ACCOUNT_NAME") || "HUAMEI EDUCATION",
     paymentPrefix: (env("SEPAY_PAYMENT_PREFIX") || "HUAMEI").toUpperCase(),
   };
+}
+
+function cloudinaryConfig() {
+  return {
+    cloudName: env("CLOUDINARY_CLOUD_NAME"),
+    apiKey: env("CLOUDINARY_API_KEY"),
+    apiSecret: env("CLOUDINARY_API_SECRET"),
+    folder: env("CLOUDINARY_AVATAR_FOLDER") || "huamei/avatars",
+  };
+}
+
+function signCloudinaryParams(params, apiSecret) {
+  const payload = Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== null && value !== "")
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("&");
+  return crypto.createHash("sha1").update(`${payload}${apiSecret}`).digest("hex");
+}
+
+async function uploadAvatarToCloudinary(userId, avatarDataUrl) {
+  const config = cloudinaryConfig();
+  if (!config.cloudName || !config.apiKey || !config.apiSecret) {
+    throw apiError("Cloudinary chưa được cấu hình trên server.", 503);
+  }
+  if (!String(avatarDataUrl || "").startsWith("data:image/")) {
+    throw apiError("Ảnh đại diện không hợp lệ.", 400);
+  }
+  if (String(avatarDataUrl).length > 600000) {
+    throw apiError("Ảnh đại diện quá lớn. Vui lòng chọn ảnh nhỏ hơn.", 413);
+  }
+
+  const timestamp = Math.floor(Date.now() / 1000);
+  const publicId = `user-${userId}`;
+  const params = {
+    folder: config.folder,
+    overwrite: "true",
+    public_id: publicId,
+    timestamp,
+  };
+  const form = new FormData();
+  form.append("file", avatarDataUrl);
+  form.append("api_key", config.apiKey);
+  Object.entries(params).forEach(([key, value]) => form.append(key, String(value)));
+  form.append("signature", signCloudinaryParams(params, config.apiSecret));
+
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${config.cloudName}/image/upload`, {
+    method: "POST",
+    body: form,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.secure_url) {
+    throw apiError(data.error?.message || "Không thể tải ảnh lên Cloudinary.", response.status || 502);
+  }
+  return data.secure_url;
 }
 
 async function assertAdmin(req) {
@@ -250,7 +362,7 @@ async function register(body) {
     const result = await query(
       `INSERT INTO users (full_name, email, password_hash)
        VALUES ($1, $2, $3)
-       RETURNING id, full_name, email, role, is_active, current_level, is_premium, premium_until, created_at, updated_at, last_login_at`,
+       RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at`,
       [fullName, email, hashPassword(password)],
     );
     return json({ user: publicUser(result.rows[0]) });
@@ -272,16 +384,67 @@ async function login(body) {
   const updated = await query(
     `UPDATE users SET last_login_at = NOW(), updated_at = NOW()
      WHERE id = $1
-     RETURNING id, full_name, email, role, is_active, current_level, is_premium, premium_until, created_at, updated_at, last_login_at`,
+     RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at`,
     [user.id],
   );
   return json({ user: publicUser(updated.rows[0]) });
 }
 
+async function updateOwnProfile(req, id, body) {
+  const requesterId = req.headers.get("x-user-id");
+  if (!requesterId || requesterId !== id) {
+    throw apiError("Bạn không có quyền cập nhật hồ sơ này.", 403);
+  }
+  const fullName = String(body.fullName || "").trim();
+  const email = String(body.email || "").trim().toLowerCase();
+  const currentLevel = String(body.currentLevel || "HSK2").trim().toUpperCase();
+  const avatarUrl = String(body.avatarUrl || "").trim();
+  if (fullName.length < 2) throw apiError("Vui lòng nhập họ và tên.", 400);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw apiError("Email không hợp lệ.", 400);
+  if (avatarUrl && !avatarUrl.startsWith("data:image/") && !/^https?:\/\//i.test(avatarUrl) && !avatarUrl.startsWith("assets/")) {
+    throw apiError("Ảnh đại diện không hợp lệ.", 400);
+  }
+  if (avatarUrl.length > 600000) {
+    throw apiError("Ảnh đại diện quá lớn. Vui lòng chọn ảnh nhỏ hơn.", 413);
+  }
+
+  try {
+    const result = await query(
+      `UPDATE users
+       SET full_name = $1, email = $2, current_level = $3, avatar_url = $4, updated_at = NOW()
+       WHERE id = $5
+       RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at`,
+      [fullName, email, currentLevel, avatarUrl || null, id],
+    );
+    if (!result.rows[0]) throw apiError("Không tìm thấy tài khoản.", 404);
+    return json({ user: publicUser(result.rows[0]) });
+  } catch (error) {
+    if (error.code === "23505") throw apiError("Email này đã được đăng ký.", 409);
+    throw error;
+  }
+}
+
+async function updateOwnAvatar(req, id, body) {
+  const requesterId = req.headers.get("x-user-id");
+  if (!requesterId || requesterId !== id) {
+    throw apiError("Bạn không có quyền cập nhật hồ sơ này.", 403);
+  }
+  const avatarUrl = await uploadAvatarToCloudinary(id, body.avatarDataUrl || body.avatarUrl || "");
+  const result = await query(
+    `UPDATE users
+     SET avatar_url = $1, updated_at = NOW()
+     WHERE id = $2
+     RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at`,
+    [avatarUrl, id],
+  );
+  if (!result.rows[0]) throw apiError("Không tìm thấy tài khoản.", 404);
+  return json({ user: publicUser(result.rows[0]), avatarUrl });
+}
+
 async function listUsers(req) {
   await assertAdmin(req);
   const result = await query(
-    `SELECT id, full_name, email, role, is_active, current_level, is_premium, premium_until, created_at, updated_at, last_login_at
+    `SELECT id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at
      FROM users
      ORDER BY created_at DESC`,
   );
@@ -300,7 +463,7 @@ async function updateUser(req, id, body) {
     `UPDATE users
      SET full_name = $1, email = $2, role = $3, is_active = $4, current_level = $5, updated_at = NOW()
      WHERE id = $6
-     RETURNING id, full_name, email, role, is_active, current_level, is_premium, premium_until, created_at, updated_at, last_login_at`,
+     RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at`,
     [fullName, email, role, isActive, currentLevel, id],
   );
   if (!result.rows[0]) throw apiError("Không tìm thấy user.", 404);
@@ -317,7 +480,7 @@ async function deleteUser(req, id) {
 async function listPlans() {
   const config = bankConfig();
   const result = await query(
-    `SELECT id, months, amount, name_vi, name_zh, sort_order
+    `SELECT id, months, duration_unit, amount, name_vi, name_zh, sort_order
      FROM payment_plans
      WHERE is_active = TRUE
      ORDER BY sort_order ASC, created_at ASC`,
@@ -326,6 +489,7 @@ async function listPlans() {
     plans: result.rows.map((row) => ({
       id: row.id,
       months: Number(row.months),
+      durationUnit: normalizeDurationUnit(row.duration_unit),
       amount: Number(row.amount),
       sortOrder: Number(row.sort_order),
       priceLabel: formatVnd(Number(row.amount)),
@@ -333,6 +497,105 @@ async function listPlans() {
       nameZh: row.name_zh,
     })),
     bankConfigured: Boolean(config.accountNumber),
+  });
+}
+
+async function getAdminPlanStats(req) {
+  await assertAdmin(req);
+
+  const revenueResult = await query(`
+    SELECT
+      COALESCE(SUM(amount), 0)::bigint AS total_revenue,
+      COALESCE(SUM(amount) FILTER (
+        WHERE paid_at >= date_trunc('month', NOW())
+      ), 0)::bigint AS revenue_this_month,
+      COALESCE(SUM(amount) FILTER (
+        WHERE paid_at >= date_trunc('month', NOW()) - interval '1 month'
+          AND paid_at < date_trunc('month', NOW())
+      ), 0)::bigint AS revenue_last_month
+    FROM payment_orders
+    WHERE status = 'paid'
+  `);
+
+  const usersResult = await query(`
+    SELECT COUNT(*)::int AS active_premium_users
+    FROM users
+    WHERE is_premium = TRUE
+      AND (premium_until IS NULL OR premium_until > NOW())
+  `);
+
+  const weekResult = await query(`
+    SELECT
+      COUNT(*) FILTER (WHERE paid_at >= date_trunc('week', NOW()))::int AS paid_this_week,
+      COUNT(*) FILTER (
+        WHERE paid_at >= date_trunc('week', NOW()) - interval '1 week'
+          AND paid_at < date_trunc('week', NOW())
+      )::int AS paid_last_week
+    FROM payment_orders
+    WHERE status = 'paid'
+  `);
+
+  const renewalResult = await query(`
+    SELECT
+      COUNT(*)::int AS total_buyers,
+      COUNT(*) FILTER (WHERE order_count >= 2)::int AS renewing_buyers
+    FROM (
+      SELECT user_id, COUNT(*)::int AS order_count
+      FROM payment_orders
+      WHERE status = 'paid'
+      GROUP BY user_id
+    ) buyers
+  `);
+
+  const recentResult = await query(`
+    SELECT o.id, o.amount, o.paid_at, o.plan_id,
+           u.full_name, u.email,
+           p.name_vi AS plan_name_vi
+    FROM payment_orders o
+    JOIN users u ON u.id = o.user_id
+    LEFT JOIN payment_plans p ON p.id = o.plan_id
+    WHERE o.status = 'paid'
+    ORDER BY o.paid_at DESC NULLS LAST
+    LIMIT 8
+  `);
+
+  const revenueRow = revenueResult.rows[0];
+  const totalRevenue = Number(revenueRow?.total_revenue || 0);
+  const thisMonth = Number(revenueRow?.revenue_this_month || 0);
+  const lastMonth = Number(revenueRow?.revenue_last_month || 0);
+  const revenueGrowthPercent = lastMonth > 0
+    ? Math.round(((thisMonth - lastMonth) / lastMonth) * 1000) / 10
+    : (thisMonth > 0 ? 100 : 0);
+
+  const activePremiumUsers = Number(usersResult.rows[0]?.active_premium_users || 0);
+  const paidThisWeek = Number(weekResult.rows[0]?.paid_this_week || 0);
+  const paidLastWeek = Number(weekResult.rows[0]?.paid_last_week || 0);
+  const weekGrowthPercent = paidLastWeek > 0
+    ? Math.round(((paidThisWeek - paidLastWeek) / paidLastWeek) * 1000) / 10
+    : (paidThisWeek > 0 ? 100 : 0);
+
+  const totalBuyers = Number(renewalResult.rows[0]?.total_buyers || 0);
+  const renewingBuyers = Number(renewalResult.rows[0]?.renewing_buyers || 0);
+  const renewalRatePercent = totalBuyers > 0
+    ? Math.round((renewingBuyers / totalBuyers) * 1000) / 10
+    : 0;
+
+  return json({
+    stats: {
+      totalRevenue,
+      revenueGrowthPercent,
+      activePremiumUsers,
+      weekGrowthPercent,
+      renewalRatePercent,
+      recentTransactions: recentResult.rows.map((tx) => ({
+        id: tx.id,
+        userName: tx.full_name,
+        userEmail: tx.email,
+        planName: tx.plan_name_vi || tx.plan_id,
+        amount: Number(tx.amount),
+        paidAt: tx.paid_at,
+      })),
+    },
   });
 }
 
@@ -353,6 +616,7 @@ async function createAdminPlan(req, body) {
   await assertAdmin(req);
   const id = String(body.id || "").trim().toLowerCase();
   const months = Number(body.months);
+  const durationUnit = normalizeDurationUnit(body.durationUnit);
   const amount = Number(body.amount);
   const nameVi = String(body.nameVi || "").trim();
   const nameZh = String(body.nameZh || "").trim();
@@ -362,16 +626,19 @@ async function createAdminPlan(req, body) {
   if (!/^[a-z0-9_-]{2,20}$/.test(id)) {
     throw apiError("Mã gói phải từ 2–20 ký tự (chữ thường, số, gạch ngang).", 400);
   }
-  if (!Number.isInteger(months) || months < 1) throw apiError("Số tháng phải là số nguyên dương.", 400);
+  if (!Number.isInteger(months) || months < 1) throw apiError("Thời hạn phải là số nguyên dương.", 400);
+  if (body.durationUnit !== undefined && body.durationUnit !== "days" && body.durationUnit !== "months") {
+    throw apiError("Đơn vị thời hạn phải là ngày hoặc tháng.", 400);
+  }
   if (!Number.isInteger(amount) || amount < 1000) throw apiError("Giá gói phải từ 1.000 VNĐ trở lên.", 400);
   if (!nameVi || !nameZh) throw apiError("Tên gói (Việt/Trung) không được để trống.", 400);
 
   try {
     const result = await query(
-      `INSERT INTO payment_plans (id, months, amount, name_vi, name_zh, is_active, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO payment_plans (id, months, duration_unit, amount, name_vi, name_zh, is_active, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *, 0 AS buyer_count`,
-      [id, months, amount, nameVi, nameZh, isActive, sortOrder],
+      [id, months, durationUnit, amount, nameVi, nameZh, isActive, sortOrder],
     );
     return json({ plan: mapAdminPlan(result.rows[0]) });
   } catch (error) {
@@ -386,6 +653,7 @@ async function updateAdminPlan(req, id, body) {
   if (!existing.rows[0]) throw apiError("Không tìm thấy gói.", 404);
 
   const months = body.months !== undefined ? Number(body.months) : undefined;
+  const durationUnit = body.durationUnit !== undefined ? normalizeDurationUnit(body.durationUnit) : undefined;
   const amount = body.amount !== undefined ? Number(body.amount) : undefined;
   const nameVi = body.nameVi !== undefined ? String(body.nameVi).trim() : undefined;
   const nameZh = body.nameZh !== undefined ? String(body.nameZh).trim() : undefined;
@@ -393,7 +661,10 @@ async function updateAdminPlan(req, id, body) {
   const sortOrder = body.sortOrder !== undefined ? Number(body.sortOrder) : undefined;
 
   if (months !== undefined && (!Number.isInteger(months) || months < 1)) {
-    throw apiError("Số tháng phải là số nguyên dương.", 400);
+    throw apiError("Thời hạn phải là số nguyên dương.", 400);
+  }
+  if (body.durationUnit !== undefined && body.durationUnit !== "days" && body.durationUnit !== "months") {
+    throw apiError("Đơn vị thời hạn phải là ngày hoặc tháng.", 400);
   }
   if (amount !== undefined && (!Number.isInteger(amount) || amount < 1000)) {
     throw apiError("Giá gói phải từ 1.000 VNĐ trở lên.", 400);
@@ -404,15 +675,16 @@ async function updateAdminPlan(req, id, body) {
   const result = await query(
     `UPDATE payment_plans
      SET months = COALESCE($2, months),
-         amount = COALESCE($3, amount),
-         name_vi = COALESCE($4, name_vi),
-         name_zh = COALESCE($5, name_zh),
-         is_active = COALESCE($6, is_active),
-         sort_order = COALESCE($7, sort_order),
+         duration_unit = COALESCE($3, duration_unit),
+         amount = COALESCE($4, amount),
+         name_vi = COALESCE($5, name_vi),
+         name_zh = COALESCE($6, name_zh),
+         is_active = COALESCE($7, is_active),
+         sort_order = COALESCE($8, sort_order),
          updated_at = NOW()
      WHERE id = $1
      RETURNING *`,
-    [id, months ?? null, amount ?? null, nameVi ?? null, nameZh ?? null, isActive ?? null, sortOrder ?? null],
+    [id, months ?? null, durationUnit ?? null, amount ?? null, nameVi ?? null, nameZh ?? null, isActive ?? null, sortOrder ?? null],
   );
   const buyerCount = await query(
     `SELECT COUNT(*)::int AS buyer_count
@@ -440,6 +712,221 @@ async function deleteAdminPlan(req, id) {
   const result = await query("DELETE FROM payment_plans WHERE id = $1", [id]);
   if (result.rowCount === 0) throw apiError("Không tìm thấy gói.", 404);
   return json({ ok: true });
+}
+
+function mapHskLessonLock(row) {
+  return {
+    lessonId: row.lesson_id,
+    level: row.level,
+    lessonNo: Number(row.lesson_no),
+    titleVi: row.title_vi,
+    freeItemLimit: Number(row.free_item_limit || 0),
+    lockedForFree: row.locked_for_free,
+    updatedAt: row.updated_at,
+  };
+}
+
+async function getPublicHskLocks() {
+  const result = await query(
+    `SELECT lesson_id, free_item_limit
+     FROM hsk_lesson_locks
+     WHERE free_item_limit > 0
+     ORDER BY lesson_id ASC`,
+  );
+  return json({
+    lessonLocks: result.rows.map((row) => ({
+      lessonId: row.lesson_id,
+      freeItemLimit: Math.max(0, Number(row.free_item_limit || 0)),
+    })),
+  });
+}
+
+async function listAdminHskLocks(req) {
+  await assertAdmin(req);
+  const result = await query(
+    `SELECT lesson_id, level, lesson_no, title_vi, free_item_limit, locked_for_free, updated_at
+     FROM hsk_lesson_locks
+     ORDER BY level ASC, lesson_no ASC, lesson_id ASC`,
+  );
+  return json({ locks: result.rows.map(mapHskLessonLock) });
+}
+
+async function saveAdminHskLocks(req, body) {
+  await assertAdmin(req);
+  const lessons = Array.isArray(body.lessons) ? body.lessons : [];
+  if (lessons.length === 0) throw apiError("Danh sách bài học không hợp lệ.", 400);
+
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    for (const lesson of lessons) {
+      const lessonId = String(lesson.lessonId || "").trim();
+      const level = String(lesson.level || "").trim().toUpperCase();
+      const lessonNo = Number(lesson.lessonNo || 0);
+      const titleVi = String(lesson.titleVi || "").trim();
+      const freeItemLimit = Math.max(0, Number(lesson.freeItemLimit || 0));
+      const lockedForFree = lesson.lockedForFree === true;
+      const effectiveLockedForFree = lockedForFree || freeItemLimit > 0;
+      if (!lessonId || !level) continue;
+      await client.query(
+        `INSERT INTO hsk_lesson_locks (lesson_id, level, lesson_no, title_vi, free_item_limit, locked_for_free, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())
+         ON CONFLICT (lesson_id) DO UPDATE
+         SET level = EXCLUDED.level,
+             lesson_no = EXCLUDED.lesson_no,
+             title_vi = EXCLUDED.title_vi,
+             free_item_limit = EXCLUDED.free_item_limit,
+             locked_for_free = EXCLUDED.locked_for_free,
+             updated_at = NOW()`,
+        [lessonId, level, lessonNo, titleVi, freeItemLimit, effectiveLockedForFree],
+      );
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  const result = await query(
+    `SELECT lesson_id, level, lesson_no, title_vi, free_item_limit, locked_for_free, updated_at
+     FROM hsk_lesson_locks
+     ORDER BY level ASC, lesson_no ASC, lesson_id ASC`,
+  );
+  return json({ locks: result.rows.map(mapHskLessonLock) });
+}
+
+function mapHskLevelCover(row) {
+  return {
+    level: row.level,
+    coverUrl: String(row.cover_url || ""),
+    updatedAt: row.updated_at,
+  };
+}
+
+async function getPublicHskLevelCovers() {
+  const result = await query(
+    `SELECT level, cover_url, updated_at
+     FROM hsk_level_covers
+     ORDER BY level ASC`,
+  );
+  return json({ covers: result.rows.map(mapHskLevelCover) });
+}
+
+async function listAdminHskLevelCovers(req) {
+  await assertAdmin(req);
+  const result = await query(
+    `SELECT level, cover_url, updated_at
+     FROM hsk_level_covers
+     ORDER BY level ASC`,
+  );
+  return json({ covers: result.rows.map(mapHskLevelCover) });
+}
+
+async function saveAdminHskLevelCovers(req, body) {
+  await assertAdmin(req);
+  const covers = Array.isArray(body.covers) ? body.covers : [];
+  if (covers.length === 0) throw apiError("Danh sách cấp HSK không hợp lệ.", 400);
+
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    for (const cover of covers) {
+      const level = String(cover.level || "").trim().toUpperCase();
+      const coverUrl = String(cover.coverUrl || "").trim();
+      if (!/^HSK[1-6]$/.test(level)) continue;
+      await client.query(
+        `INSERT INTO hsk_level_covers (level, cover_url, updated_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (level) DO UPDATE
+         SET cover_url = EXCLUDED.cover_url,
+             updated_at = NOW()`,
+        [level, coverUrl],
+      );
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  const result = await query(
+    `SELECT level, cover_url, updated_at
+     FROM hsk_level_covers
+     ORDER BY level ASC`,
+  );
+  return json({ covers: result.rows.map(mapHskLevelCover) });
+}
+
+function mapDailyThemeLock(row) {
+  return {
+    themeId: row.theme_id,
+    titleVi: row.title_vi,
+    sortOrder: Number(row.sort_order),
+    lockedForFree: row.locked_for_free,
+    updatedAt: row.updated_at,
+  };
+}
+
+async function getPublicDailyLocks() {
+  const result = await query(
+    `SELECT theme_id FROM daily_theme_locks WHERE locked_for_free = TRUE`,
+  );
+  return json({ lockedThemeIds: result.rows.map((row) => row.theme_id) });
+}
+
+async function listAdminDailyLocks(req) {
+  await assertAdmin(req);
+  const result = await query(
+    `SELECT theme_id, title_vi, sort_order, locked_for_free, updated_at
+     FROM daily_theme_locks
+     ORDER BY sort_order ASC, theme_id ASC`,
+  );
+  return json({ locks: result.rows.map(mapDailyThemeLock) });
+}
+
+async function saveAdminDailyLocks(req, body) {
+  await assertAdmin(req);
+  const themes = Array.isArray(body.themes) ? body.themes : [];
+  if (themes.length === 0) throw apiError("Danh sách chủ đề không hợp lệ.", 400);
+
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    for (const theme of themes) {
+      const themeId = String(theme.themeId || "").trim();
+      const titleVi = String(theme.titleVi || "").trim();
+      const sortOrder = Number(theme.sortOrder || 0);
+      const lockedForFree = theme.lockedForFree === true;
+      if (!themeId) continue;
+      await client.query(
+        `INSERT INTO daily_theme_locks (theme_id, title_vi, sort_order, locked_for_free, updated_at)
+         VALUES ($1, $2, $3, $4, NOW())
+         ON CONFLICT (theme_id) DO UPDATE
+         SET title_vi = EXCLUDED.title_vi,
+             sort_order = EXCLUDED.sort_order,
+             locked_for_free = EXCLUDED.locked_for_free,
+             updated_at = NOW()`,
+        [themeId, titleVi, sortOrder, lockedForFree],
+      );
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  const result = await query(
+    `SELECT theme_id, title_vi, sort_order, locked_for_free, updated_at
+     FROM daily_theme_locks
+     ORDER BY sort_order ASC, theme_id ASC`,
+  );
+  return json({ locks: result.rows.map(mapDailyThemeLock) });
 }
 
 function buildQrImageUrl(account, bank, amount, description) {
@@ -620,8 +1107,7 @@ async function activateOrder(order, sepayId) {
     const userResult = await client.query("SELECT premium_until FROM users WHERE id = $1 FOR UPDATE", [order.user_id]);
     const now = new Date();
     const currentEnd = userResult.rows[0]?.premium_until ? new Date(userResult.rows[0].premium_until) : null;
-    const premiumUntil = new Date(currentEnd && currentEnd > now ? currentEnd : now);
-    premiumUntil.setMonth(premiumUntil.getMonth() + plan.months);
+    const premiumUntil = applyPlanDuration(currentEnd && currentEnd > now ? currentEnd : now, plan);
     await client.query("UPDATE payment_orders SET status = 'paid', paid_at = NOW() WHERE id = $1 AND status = 'pending'", [order.id]);
     await client.query("UPDATE users SET is_premium = TRUE, premium_until = $2, updated_at = NOW() WHERE id = $1", [order.user_id, premiumUntil.toISOString()]);
     await client.query("UPDATE sepay_webhook_events SET processed = TRUE, order_id = $2 WHERE sepay_id = $1", [sepayId, order.id]);
@@ -650,15 +1136,29 @@ async function route(req) {
 
   if (req.method === "POST" && path === "/api/register") return register(body);
   if (req.method === "POST" && path === "/api/login") return login(body);
+  const ownAvatarMatch = path.match(/^\/api\/users\/([^/]+)\/avatar$/);
+  if (ownAvatarMatch && req.method === "PATCH") return updateOwnAvatar(req, decodeURIComponent(ownAvatarMatch[1]), body);
+  const ownProfileMatch = path.match(/^\/api\/users\/([^/]+)\/profile$/);
+  if (ownProfileMatch && req.method === "PATCH") return updateOwnProfile(req, decodeURIComponent(ownProfileMatch[1]), body);
   if (req.method === "GET" && path === "/api/admin/users") return listUsers(req);
   const adminUserMatch = path.match(/^\/api\/admin\/users\/([^/]+)$/);
   if (adminUserMatch && req.method === "PATCH") return updateUser(req, decodeURIComponent(adminUserMatch[1]), body);
   if (adminUserMatch && req.method === "DELETE") return deleteUser(req, decodeURIComponent(adminUserMatch[1]));
+  if (req.method === "GET" && path === "/api/admin/plans/stats") return getAdminPlanStats(req);
   if (req.method === "GET" && path === "/api/admin/plans") return listAdminPlans(req);
   if (req.method === "POST" && path === "/api/admin/plans") return createAdminPlan(req, body);
   const adminPlanMatch = path.match(/^\/api\/admin\/plans\/([^/]+)$/);
   if (adminPlanMatch && req.method === "PATCH") return updateAdminPlan(req, decodeURIComponent(adminPlanMatch[1]), body);
   if (adminPlanMatch && req.method === "DELETE") return deleteAdminPlan(req, decodeURIComponent(adminPlanMatch[1]));
+  if (req.method === "GET" && path === "/api/content/hsk-locks") return getPublicHskLocks();
+  if (req.method === "GET" && path === "/api/content/daily-locks") return getPublicDailyLocks();
+  if (req.method === "GET" && path === "/api/content/hsk-level-covers") return getPublicHskLevelCovers();
+  if (req.method === "GET" && path === "/api/admin/content/hsk-locks") return listAdminHskLocks(req);
+  if (req.method === "PUT" && path === "/api/admin/content/hsk-locks") return saveAdminHskLocks(req, body);
+  if (req.method === "GET" && path === "/api/admin/content/hsk-level-covers") return listAdminHskLevelCovers(req);
+  if (req.method === "PUT" && path === "/api/admin/content/hsk-level-covers") return saveAdminHskLevelCovers(req, body);
+  if (req.method === "GET" && path === "/api/admin/content/daily-locks") return listAdminDailyLocks(req);
+  if (req.method === "PUT" && path === "/api/admin/content/daily-locks") return saveAdminDailyLocks(req, body);
   if (req.method === "GET" && path === "/api/payments/plans") return listPlans();
   if (req.method === "POST" && path === "/api/payments/orders") return createOrder(body);
   const orderStatusMatch = path.match(/^\/api\/payments\/orders\/([^/]+)\/status$/);

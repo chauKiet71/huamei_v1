@@ -1,12 +1,14 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { PaymentPlansService } from '../payment/payment-plans.service';
+import { ContentService } from '../content/content.service';
 
 @Injectable()
 export class AdminService {
   constructor(
     private readonly db: DatabaseService,
     private readonly paymentPlansService: PaymentPlansService,
+    private readonly contentService: ContentService,
   ) {}
 
   publicUser(row: any) {
@@ -22,6 +24,7 @@ export class AdminService {
       role: row.role,
       isActive: row.is_active,
       currentLevel: row.current_level || 'HSK2',
+      avatarUrl: row.avatar_url || '',
       isPremium,
       plan: isPremium ? 'PREMIUM' : 'FREE',
       premiumUntil: row.premium_until,
@@ -55,7 +58,7 @@ export class AdminService {
 
     try {
       const result = await this.db.query(
-        `SELECT id, full_name, email, role, is_active, current_level, is_premium, premium_until, created_at, updated_at, last_login_at
+        `SELECT id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at
          FROM users
          ORDER BY created_at DESC`,
       );
@@ -87,7 +90,7 @@ export class AdminService {
         `UPDATE users
          SET full_name = $1, email = $2, role = $3, is_active = $4, current_level = $5, updated_at = NOW()
          WHERE id = $6
-         RETURNING id, full_name, email, role, is_active, current_level, is_premium, premium_until, created_at, updated_at, last_login_at`,
+         RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at`,
         [fullName, email, role, isActive, currentLevel, id],
       );
       if (!result.rows[0]) {
@@ -126,6 +129,16 @@ export class AdminService {
     }
   }
 
+  async getPlanStats(headers: Record<string, string | string[] | undefined>) {
+    await this.assertAdmin(headers);
+    try {
+      const stats = await this.paymentPlansService.getAdminStats();
+      return { stats };
+    } catch (error: any) {
+      throw new HttpException(error.message || 'Lỗi server.', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
   async createPlan(body: any, headers: Record<string, string | string[] | undefined>) {
     await this.assertAdmin(headers);
     return this.paymentPlansService.createPlan(body);
@@ -139,5 +152,96 @@ export class AdminService {
   async deletePlan(id: string, headers: Record<string, string | string[] | undefined>) {
     await this.assertAdmin(headers);
     return this.paymentPlansService.deletePlan(id);
+  }
+
+  async getHskLessonLocks(headers: Record<string, string | string[] | undefined>) {
+    await this.assertAdmin(headers);
+    try {
+      const locks = await this.contentService.listLocks();
+      return { locks };
+    } catch (error: any) {
+      throw new HttpException(error.message || 'Lỗi server.', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async saveHskLessonLocks(
+    body: {
+      lessons?: Array<{
+        lessonId: string;
+        level: string;
+        lessonNo?: number;
+        titleVi?: string;
+        freeItemLimit?: number;
+        lockedForFree?: boolean;
+      }>;
+    },
+    headers: Record<string, string | string[] | undefined>,
+  ) {
+    await this.assertAdmin(headers);
+    try {
+      return await this.contentService.saveLocks(body.lessons || []);
+    } catch (error: any) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(error.message || 'Lỗi server.', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async getDailyThemeLocks(headers: Record<string, string | string[] | undefined>) {
+    await this.assertAdmin(headers);
+    try {
+      const locks = await this.contentService.listDailyLocks();
+      return { locks };
+    } catch (error: any) {
+      throw new HttpException(error.message || 'Lỗi server.', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async saveDailyThemeLocks(
+    body: {
+      themes?: Array<{
+        themeId: string;
+        titleVi?: string;
+        sortOrder?: number;
+        freeItemLimit?: number;
+        lockedForFree?: boolean;
+      }>;
+    },
+    headers: Record<string, string | string[] | undefined>,
+  ) {
+    await this.assertAdmin(headers);
+    try {
+      return await this.contentService.saveDailyLocks(body.themes || []);
+    } catch (error: any) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(error.message || 'Lỗi server.', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async getHskLevelCovers(headers: Record<string, string | string[] | undefined>) {
+    await this.assertAdmin(headers);
+    try {
+      const covers = await this.contentService.listHskLevelCovers();
+      return { covers };
+    } catch (error: any) {
+      throw new HttpException(error.message || 'Lỗi server.', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async saveHskLevelCovers(
+    body: {
+      covers?: Array<{
+        level: string;
+        coverUrl?: string;
+      }>;
+    },
+    headers: Record<string, string | string[] | undefined>,
+  ) {
+    await this.assertAdmin(headers);
+    try {
+      return await this.contentService.saveHskLevelCovers(body.covers || []);
+    } catch (error: any) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(error.message || 'Lỗi server.', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
   }
 }

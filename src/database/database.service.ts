@@ -54,6 +54,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         role TEXT NOT NULL DEFAULT 'student',
         is_active BOOLEAN NOT NULL DEFAULT TRUE,
         current_level TEXT NOT NULL DEFAULT 'HSK2',
+        avatar_url TEXT,
         is_premium BOOLEAN NOT NULL DEFAULT FALSE,
         premium_until TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -63,6 +64,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     `);
     await this.pool.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS current_level TEXT NOT NULL DEFAULT 'HSK2';
+    `);
+    await this.pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
     `);
     await this.pool.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS is_premium BOOLEAN NOT NULL DEFAULT FALSE;
@@ -105,6 +109,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       CREATE TABLE IF NOT EXISTS payment_plans (
         id TEXT PRIMARY KEY,
         months INTEGER NOT NULL,
+        duration_unit TEXT NOT NULL DEFAULT 'months',
         amount INTEGER NOT NULL,
         name_vi TEXT NOT NULL,
         name_zh TEXT NOT NULL,
@@ -115,12 +120,52 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       );
     `);
     await this.pool.query(`
+      ALTER TABLE payment_plans
+      ADD COLUMN IF NOT EXISTS duration_unit TEXT NOT NULL DEFAULT 'months';
+    `);
+    await this.pool.query(`
       INSERT INTO payment_plans (id, months, amount, name_vi, name_zh, is_active, sort_order)
       VALUES
         ('1m', 1, 149000, '1 Tháng', '1 个月', TRUE, 1),
         ('3m', 3, 399000, '3 Tháng', '3 个月', TRUE, 2),
         ('6m', 6, 699000, '6 Tháng', '6 个月', TRUE, 3)
       ON CONFLICT (id) DO NOTHING;
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS hsk_lesson_locks (
+        lesson_id TEXT PRIMARY KEY,
+        level TEXT NOT NULL,
+        lesson_no INTEGER NOT NULL DEFAULT 0,
+        title_vi TEXT NOT NULL DEFAULT '',
+        free_item_limit INTEGER NOT NULL DEFAULT 0,
+        locked_for_free BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await this.pool.query(`
+      ALTER TABLE hsk_lesson_locks
+      ADD COLUMN IF NOT EXISTS free_item_limit INTEGER NOT NULL DEFAULT 0;
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS daily_theme_locks (
+        theme_id TEXT PRIMARY KEY,
+        title_vi TEXT NOT NULL DEFAULT '',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        free_item_limit INTEGER NOT NULL DEFAULT 0,
+        locked_for_free BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await this.pool.query(`
+      ALTER TABLE daily_theme_locks
+      ADD COLUMN IF NOT EXISTS free_item_limit INTEGER NOT NULL DEFAULT 0;
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS hsk_level_covers (
+        level TEXT PRIMARY KEY,
+        cover_url TEXT NOT NULL DEFAULT '',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
     `);
   }
 }

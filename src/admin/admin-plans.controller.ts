@@ -5,6 +5,11 @@ import { AdminService } from './admin.service';
 export class AdminPlansController {
   constructor(private readonly adminService: AdminService) {}
 
+  @Get('stats')
+  async getPlanStats(@Headers() headers: Record<string, string>) {
+    return this.adminService.getPlanStats(headers);
+  }
+
   @Get()
   async getAllPlans(@Headers() headers: Record<string, string>) {
     return this.adminService.getAllPlans(headers);
