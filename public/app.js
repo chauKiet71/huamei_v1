@@ -424,6 +424,8 @@ const state = {
   solved: [],
   complete: false,
   score: 0,
+  practiceStartedAt: 0,
+  practiceCompletedAt: 0,
   wrong: new Set(JSON.parse(localStorage.getItem("v2-wrong") || "[]")),
   saved: new Set(JSON.parse(localStorage.getItem("v2-saved") || "[]")),
   completed: new Set(JSON.parse(localStorage.getItem("v2-completed") || "[]")),
@@ -5199,6 +5201,15 @@ function resetPractice() {
   $("#burstLayer").innerHTML = "";
 }
 
+function formatPracticeDuration(startedAt, completedAt = Date.now()) {
+  const startTime = Number(startedAt || 0);
+  const endTime = Number(completedAt || Date.now());
+  const elapsedSeconds = startTime > 0 ? Math.max(0, Math.floor((endTime - startTime) / 1000)) : 0;
+  const minutes = Math.floor(elapsedSeconds / 60);
+  const seconds = elapsedSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
 function startPractice(options = {}) {
   if (!requireLoginForPractice()) return;
   if (options.lessonId && !canAccessHskLesson(options.lessonId)) {
@@ -5243,6 +5254,8 @@ function startPractice(options = {}) {
     return;
   }
   state.score = 0;
+  state.practiceStartedAt = Date.now();
+  state.practiceCompletedAt = 0;
   resetPractice();
   renderPractice();
   setScreen("practice");
@@ -5464,7 +5477,11 @@ function canSubmitCurrentAnswer(value) {
 }
 
 function finishItem(options = {}) {
+  const collection = currentCollection();
   state.complete = true;
+  if (state.index >= collection.items.length - 1 && !state.practiceCompletedAt) {
+    state.practiceCompletedAt = Date.now();
+  }
   state.score += 100;
   renderPractice();
   burst();
@@ -5521,19 +5538,23 @@ function showAnswer() {
 function renderComplete() {
   const collection = currentCollection();
   const isVocab = state.module === "vocab";
+  const totalItems = collection.items.length;
+  const practiceDuration = formatPracticeDuration(state.practiceStartedAt, state.practiceCompletedAt || Date.now());
   screens.complete.innerHTML = `
     <section class="complete-card">
-      <span class="trophy">✓</span>
+      <span class="trophy" aria-hidden="true">
+        <span class="trophy-check">✓</span>
+        <span class="trophy-sparkles">✦✦</span>
+      </span>
       <h1>${t("completeTitle")}</h1>
       <p>${t("completeSub")}</p>
       <div class="complete-stats">
-        <span><strong>${collection.items.length}</strong>${t("itemCount")}</span>
-        <span><strong>${state.score}</strong>XP</span>
-        <span><strong>${state.wrong.size}</strong>${t("wrong")}</span>
+        <span class="complete-stat-card"><strong>${totalItems}</strong>${t("itemCount")}</span>
+        <span class="complete-stat-card complete-stat-card--time"><strong>${practiceDuration}</strong>${state.lang === "vi" ? "Thời gian" : "用时"}</span>
       </div>
       <div class="complete-actions">
         <button class="secondary" data-complete="home" type="button">${isVocab ? (state.lang === "vi" ? "Về bộ từ" : "返回生词本") : t("backHome")}</button>
-        ${isVocab ? "" : `<button class="primary" data-complete="next" type="button">${t("nextLesson")}</button>`}
+        ${isVocab ? "" : `<button class="primary" data-complete="next" type="button">${t("nextLesson")} <span aria-hidden="true">→</span></button>`}
       </div>
     </section>
   `;
