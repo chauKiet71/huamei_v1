@@ -3961,7 +3961,7 @@ function renderAppDesktopSidebarHTML(activeNavOverride = "") {
         <span class="home-desktop-brand-icon" aria-hidden="true">✎</span>
         <div>
           <strong>${isVi ? "HuaMei" : "HuaMei"}</strong>
-          <small>${isVi ? "Viết đẹp - Nhớ lâu" : "写好字 · 记得牢"}</small>
+          <small>${isVi ? "Viết đúng - Nhớ lâu" : "写好字 · 记得牢"}</small>
         </div>
       </div>
       <nav class="home-desktop-nav">
@@ -4164,7 +4164,7 @@ function renderHomeMobileTopbarHTML(isVi) {
       ? `Luyện viết<br>tiếng <span class="home-mobile-topbar-accent">Trung</span>`
       : `中文<br><span class="home-mobile-topbar-accent">书写</span>练习`}
         </h1>
-        <p>${isVi ? "Viết đúng nét – Nhớ lâu chữ" : "写对笔画 · 记得更牢"}</p>
+        <p>${isVi ? "Viết đúng – Nhớ lâu" : "写对笔画 · 记得更牢"}</p>
       </div>
 
       <div class="home-mobile-topbar-profile${isGuest ? " home-mobile-topbar-profile--guest" : ""}" ${isGuest ? "data-home-login" : ""}>
