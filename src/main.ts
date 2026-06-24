@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { json, urlencoded } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -34,7 +35,9 @@ async function bootstrap() {
   // Load environment variables before initializing the app
   loadEnvFile();
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  app.use(json({ limit: '30mb' }));
+  app.use(urlencoded({ extended: true, limit: '30mb' }));
 
   // Enable CORS for frontend API calls
   app.enableCors();

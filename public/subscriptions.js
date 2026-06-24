@@ -17,6 +17,126 @@ const recentTransactionsList = document.querySelector("#recentTransactionsList")
 
 let editingPlanId = null;
 let plans = [];
+let latestStats = {};
+let latestTransactions = [];
+let currentLang = new URLSearchParams(window.location.search).get("lang") || localStorage.getItem("v2-lang") || "vi";
+
+const i18n = {
+  vi: {
+    pageTitle: "Quản lý gói đăng ký",
+    pageSubtitle: "Theo dõi doanh thu và tối ưu hóa các gói học tập của HuaMei.",
+    addPlan: "Thêm gói mới",
+    totalRevenue: "Tổng doanh thu",
+    activePlans: "Gói đang hoạt động",
+    users: "Users",
+    renewalRate: "Tỷ lệ gia hạn",
+    planList: "Danh sách gói dịch vụ",
+    downloadCsv: "Tải CSV",
+    planName: "Tên gói",
+    price: "Giá (VNĐ)",
+    buyers: "Người mua",
+    status: "Trạng thái",
+    actions: "Thao tác",
+    recentTransactions: "Giao dịch gần đây",
+    latest: "Mới nhất",
+    loadingTransactions: "Đang tải giao dịch...",
+    emptyPlans: "Chưa có gói dịch vụ nào. Nhấn \"Thêm gói mới\" để tạo.",
+    emptyTransactions: "Chưa có giao dịch thanh toán.",
+    active: "Đang bán",
+    hidden: "Tạm ẩn",
+    edit: "Sửa",
+    delete: "Xóa",
+    editPlan: "Chỉnh sửa gói",
+    newPlan: "Thêm gói mới",
+    close: "Đóng",
+    planId: "Mã gói",
+    planNameVi: "Tên gói (Tiếng Việt)",
+    planNameZh: "Tên gói (Tiếng Trung)",
+    duration: "Thời hạn",
+    durationUnit: "Đơn vị thời hạn",
+    months: "Tháng",
+    days: "Ngày",
+    amount: "Giá bán (VNĐ)",
+    sortOrder: "Thứ tự hiển thị",
+    savePlan: "Lưu gói",
+    noRevenue: "Chưa có doanh thu tháng này",
+    revenueThisMonth: "{value} tháng này",
+    upWeek: "Tăng {value} so với tuần trước",
+    downWeek: "Giảm {value} so với tuần trước",
+    noWeekTransactions: "Chưa có giao dịch tuần này",
+    renewalStable: "Đang ở mức ổn định",
+    renewalImprove: "Cần cải thiện tỷ lệ gia hạn",
+    renewalEmpty: "Chưa có dữ liệu gia hạn",
+    customer: "Khách hàng",
+    proPlan: "Gói Pro",
+    adminRequired: "Vui lòng đăng nhập bằng tài khoản admin.",
+    cannotConnect: "Không thể kết nối server.",
+    updatedPlan: "Đã cập nhật gói đăng ký.",
+    addedPlan: "Đã thêm gói mới.",
+    deletedPlan: "Đã xóa gói.",
+    confirmDelete: "Xóa gói \"{name}\"?",
+    csvToast: "Đã tải danh sách gói (CSV)",
+    csvHeader: "Ma goi,Ten goi,Thoi han,Don vi,Gia VND,Trang thai,Nguoi mua",
+  },
+  zh: {
+    pageTitle: "订阅套餐管理",
+    pageSubtitle: "跟踪收入并优化 HuaMei 的学习套餐。",
+    addPlan: "新增套餐",
+    totalRevenue: "总收入",
+    activePlans: "生效套餐",
+    users: "用户",
+    renewalRate: "续费率",
+    planList: "套餐列表",
+    downloadCsv: "下载 CSV",
+    planName: "套餐名称",
+    price: "价格 (VNĐ)",
+    buyers: "购买人数",
+    status: "状态",
+    actions: "操作",
+    recentTransactions: "最近交易",
+    latest: "最新",
+    loadingTransactions: "正在加载交易...",
+    emptyPlans: "暂无套餐。点击“新增套餐”创建。",
+    emptyTransactions: "暂无支付交易。",
+    active: "在售",
+    hidden: "隐藏",
+    edit: "编辑",
+    delete: "删除",
+    editPlan: "编辑套餐",
+    newPlan: "新增套餐",
+    close: "关闭",
+    planId: "套餐 ID",
+    planNameVi: "套餐名称（越南语）",
+    planNameZh: "套餐名称（中文）",
+    duration: "时长",
+    durationUnit: "时长单位",
+    months: "月",
+    days: "天",
+    amount: "售价 (VNĐ)",
+    sortOrder: "显示顺序",
+    savePlan: "保存套餐",
+    noRevenue: "本月暂无收入",
+    revenueThisMonth: "{value} 本月",
+    upWeek: "较上周增长 {value}",
+    downWeek: "较上周下降 {value}",
+    noWeekTransactions: "本周暂无交易",
+    renewalStable: "当前较稳定",
+    renewalImprove: "需要提升续费率",
+    renewalEmpty: "暂无续费数据",
+    customer: "客户",
+    proPlan: "Pro 套餐",
+    adminRequired: "请使用管理员账户登录。",
+    cannotConnect: "无法连接服务器。",
+    updatedPlan: "已更新套餐。",
+    addedPlan: "已新增套餐。",
+    deletedPlan: "已删除套餐。",
+    confirmDelete: "删除套餐“{name}”？",
+    csvToast: "已下载套餐列表 (CSV)",
+    csvHeader: "套餐ID,套餐名称,时长,单位,价格VND,状态,购买人数",
+  },
+};
+
+const tr = (key) => (i18n[currentLang] || i18n.vi)[key] || i18n.vi[key] || key;
 
 function getAdminUserId() {
   try {
@@ -43,6 +163,54 @@ function showToast(message, isError = false) {
   showToast.timer = window.setTimeout(() => toast.classList.remove("show"), 2600);
 }
 
+function applyStaticLanguage() {
+  document.documentElement.lang = currentLang;
+  document.title = tr("pageTitle");
+  document.querySelector(".subscription-hero h1").textContent = tr("pageTitle");
+  document.querySelector(".subscription-hero p").textContent = tr("pageSubtitle");
+  addPlanBtn.lastChild.textContent = ` ${tr("addPlan")}`;
+  document.querySelector(".metric-card:nth-child(1) p").textContent = tr("totalRevenue");
+  document.querySelector(".metric-card:nth-child(2) p").textContent = tr("activePlans");
+  document.querySelector(".metric-card:nth-child(2) em").textContent = tr("users");
+  document.querySelector(".metric-card:nth-child(3) p").textContent = tr("renewalRate");
+  document.querySelector(".plans-panel .panel-title h2").textContent = tr("planList");
+  downloadCsvBtn.textContent = tr("downloadCsv");
+  document.querySelector(".plan-table").setAttribute("aria-label", tr("planList"));
+  const headers = document.querySelectorAll(".plan-head [role='columnheader']");
+  [tr("planName"), tr("price"), tr("buyers"), tr("status"), tr("actions")].forEach((text, index) => {
+    if (headers[index]) headers[index].textContent = text;
+  });
+  document.querySelector(".transaction-panel .panel-title h2").textContent = tr("recentTransactions");
+  document.querySelector(".today-badge").textContent = tr("latest");
+  document.querySelector(".dialog-close")?.setAttribute("aria-label", tr("close"));
+  const labels = planDialogForm?.querySelectorAll("label") || [];
+  const labelText = [tr("planId"), tr("planNameVi"), tr("planNameZh"), tr("duration"), tr("amount"), tr("sortOrder"), tr("status")];
+  labels.forEach((label, index) => {
+    const firstText = Array.from(label.childNodes).find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+    if (firstText) firstText.textContent = `\n        ${labelText[index]}\n        `;
+  });
+  planDurationUnitSelect?.setAttribute("aria-label", tr("durationUnit"));
+  const monthOption = planDurationUnitSelect?.querySelector('option[value="months"]');
+  const dayOption = planDurationUnitSelect?.querySelector('option[value="days"]');
+  if (monthOption) monthOption.textContent = tr("months");
+  if (dayOption) dayOption.textContent = tr("days");
+  const activeOption = planStatusSelect?.querySelector('option[value="active"]');
+  const hiddenOption = planStatusSelect?.querySelector('option[value="hidden"]');
+  if (activeOption) activeOption.textContent = tr("active");
+  if (hiddenOption) hiddenOption.textContent = tr("hidden");
+  document.querySelector(".dialog-submit").textContent = tr("savePlan");
+  if (planDialogTitle) planDialogTitle.textContent = editingPlanId ? tr("editPlan") : tr("newPlan");
+}
+
+function applyLanguage(nextLang = currentLang) {
+  currentLang = nextLang === "zh" ? "zh" : "vi";
+  localStorage.setItem("v2-lang", currentLang);
+  applyStaticLanguage();
+  renderStats(latestStats);
+  renderRecentTransactions(latestTransactions);
+  renderPlans();
+}
+
 async function apiRequest(path, options = {}) {
   const response = await fetch(path, {
     ...options,
@@ -55,7 +223,7 @@ async function apiRequest(path, options = {}) {
   if (!response.ok) {
     const message = data.error
       || (Array.isArray(data.message) ? data.message[0] : data.message)
-      || "Không thể kết nối server.";
+      || tr("cannotConnect");
     throw new Error(message);
   }
   return data;
@@ -64,7 +232,7 @@ async function apiRequest(path, options = {}) {
 function adminHeaders() {
   const adminUserId = getAdminUserId();
   if (!adminUserId) {
-    throw new Error("Vui lòng đăng nhập bằng tài khoản admin.");
+    throw new Error(tr("adminRequired"));
   }
   return { "X-Admin-User-Id": adminUserId };
 }
@@ -117,9 +285,9 @@ function renderStats(stats) {
   setMetricTrend(
     revenueGrowthMetric,
     stats?.revenueGrowthPercent,
-    "{value} tháng này",
-    "{value} tháng này",
-    "Chưa có doanh thu tháng này",
+    tr("revenueThisMonth"),
+    tr("revenueThisMonth"),
+    tr("noRevenue"),
   );
 
   if (activeUsersMetric) {
@@ -129,9 +297,9 @@ function renderStats(stats) {
   setMetricTrend(
     activeUsersGrowthMetric,
     stats?.weekGrowthPercent,
-    "Tăng {value} so với tuần trước",
-    "Giảm {value} so với tuần trước",
-    "Chưa có giao dịch tuần này",
+    tr("upWeek"),
+    tr("downWeek"),
+    tr("noWeekTransactions"),
   );
 
   if (renewalRateMetric) {
@@ -143,13 +311,13 @@ function renderStats(stats) {
     renewalStatusMetric.classList.remove("stable", "neutral", "down");
     if (rate >= 60) {
       renewalStatusMetric.classList.add("stable");
-      renewalStatusMetric.textContent = "Đang ở mức ổn định";
+      renewalStatusMetric.textContent = tr("renewalStable");
     } else if (rate > 0) {
       renewalStatusMetric.classList.add("neutral");
-      renewalStatusMetric.textContent = "Cần cải thiện tỷ lệ gia hạn";
+      renewalStatusMetric.textContent = tr("renewalImprove");
     } else {
       renewalStatusMetric.classList.add("neutral");
-      renewalStatusMetric.textContent = "Chưa có dữ liệu gia hạn";
+      renewalStatusMetric.textContent = tr("renewalEmpty");
     }
   }
 }
@@ -158,7 +326,7 @@ function renderRecentTransactions(transactions) {
   if (!recentTransactionsList) return;
 
   if (!transactions?.length) {
-    recentTransactionsList.innerHTML = `<p class="transaction-empty">Chưa có giao dịch thanh toán.</p>`;
+    recentTransactionsList.innerHTML = `<p class="transaction-empty">${tr("emptyTransactions")}</p>`;
     return;
   }
 
@@ -166,8 +334,8 @@ function renderRecentTransactions(transactions) {
     <article class="transaction-item">
       <div class="transaction-avatar">${escapeHtml(String(tx.userName || tx.userEmail || "U").charAt(0).toUpperCase())}</div>
       <div>
-        <strong>${escapeHtml(tx.userName || tx.userEmail || "Khách hàng")}</strong>
-        <span>${escapeHtml(tx.planName || "Gói Pro")} - ${formatTransactionTime(tx.paidAt)}</span>
+        <strong>${escapeHtml(tx.userName || tx.userEmail || tr("customer"))}</strong>
+        <span>${escapeHtml(tx.planName || tr("proPlan"))} - ${formatTransactionTime(tx.paidAt)}</span>
       </div>
       <p>+${formatAmount(tx.amount)}đ</p>
     </article>
@@ -179,9 +347,13 @@ async function loadStats() {
     const data = await apiRequest("/api/admin/plans/stats", {
       headers: adminHeaders(),
     });
-    renderStats(data.stats || {});
-    renderRecentTransactions(data.stats?.recentTransactions || []);
+    latestStats = data.stats || {};
+    latestTransactions = data.stats?.recentTransactions || [];
+    renderStats(latestStats);
+    renderRecentTransactions(latestTransactions);
   } catch (error) {
+    latestStats = {};
+    latestTransactions = [];
     renderStats({});
     if (recentTransactionsList) {
       recentTransactionsList.innerHTML = `<p class="transaction-empty">${escapeHtml(error.message)}</p>`;
@@ -198,8 +370,8 @@ function planBadge(plan) {
 
 function formatPlanDuration(plan) {
   const value = Number(plan.months) || 0;
-  if (plan.durationUnit === "days") return `${value} ngày`;
-  return `${value} tháng`;
+  if (plan.durationUnit === "days") return `${value} ${tr("days").toLowerCase()}`;
+  return `${value} ${tr("months").toLowerCase()}`;
 }
 
 function renderPlans() {
@@ -208,7 +380,7 @@ function renderPlans() {
   if (!plans.length) {
     planTableBody.innerHTML = `
       <div class="plan-row plan-empty" role="row">
-        <span role="cell">Chưa có gói dịch vụ nào. Nhấn "Thêm gói mới" để tạo.</span>
+        <span role="cell">${tr("emptyPlans")}</span>
       </div>
     `;
     return;
@@ -218,17 +390,17 @@ function renderPlans() {
     <div class="plan-row" role="row" data-plan-id="${escapeHtml(plan.id)}">
       <span class="plan-name" role="cell">
         <i>${escapeHtml(planBadge(plan))}</i>
-        ${escapeHtml(plan.nameVi)}
+        ${escapeHtml(currentLang === "zh" ? (plan.nameZh || plan.nameVi) : plan.nameVi)}
         <small>${escapeHtml(formatPlanDuration(plan))}</small>
       </span>
       <span role="cell">${formatAmount(plan.amount)}</span>
       <span role="cell">${formatAmount(plan.buyerCount || 0)}</span>
       <span role="cell">
-        <mark class="${plan.isActive ? "" : "inactive"}">${plan.isActive ? "Đang bán" : "Tạm ẩn"}</mark>
+        <mark class="${plan.isActive ? "" : "inactive"}">${plan.isActive ? tr("active") : tr("hidden")}</mark>
       </span>
       <span class="plan-actions" role="cell">
-        <button class="icon-action edit-plan-btn" type="button" aria-label="Sửa ${escapeHtml(plan.nameVi)}">✎</button>
-        <button class="icon-action delete delete-plan-btn" type="button" aria-label="Xóa ${escapeHtml(plan.nameVi)}">🗑</button>
+        <button class="icon-action edit-plan-btn" type="button" aria-label="${tr("edit")} ${escapeHtml(currentLang === "zh" ? (plan.nameZh || plan.nameVi) : plan.nameVi)}">✎</button>
+        <button class="icon-action delete delete-plan-btn" type="button" aria-label="${tr("delete")} ${escapeHtml(currentLang === "zh" ? (plan.nameZh || plan.nameVi) : plan.nameVi)}">🗑</button>
       </span>
     </div>
   `).join("");
@@ -245,7 +417,7 @@ function escapeHtml(value) {
 function openPlanDialog(plan = null) {
   editingPlanId = plan?.id || null;
   if (planDialogTitle) {
-    planDialogTitle.textContent = plan ? "Chỉnh sửa gói" : "Thêm gói mới";
+    planDialogTitle.textContent = plan ? tr("editPlan") : tr("newPlan");
   }
   if (planIdInput) {
     planIdInput.value = plan?.id || "";
@@ -299,14 +471,14 @@ async function savePlan(event) {
         headers: adminHeaders(),
         body: JSON.stringify(payload),
       });
-      showToast("Đã cập nhật gói đăng ký.");
+      showToast(tr("updatedPlan"));
     } else {
       await apiRequest("/api/admin/plans", {
         method: "POST",
         headers: adminHeaders(),
         body: JSON.stringify(payload),
       });
-      showToast("Đã thêm gói mới.");
+      showToast(tr("addedPlan"));
     }
     planDialog?.close();
     await Promise.all([loadPlans(), loadStats()]);
@@ -318,14 +490,15 @@ async function savePlan(event) {
 async function deletePlan(planId) {
   const plan = plans.find((item) => item.id === planId);
   if (!plan) return;
-  if (!window.confirm(`Xóa gói "${plan.nameVi}"?`)) return;
+  const planName = currentLang === "zh" ? (plan.nameZh || plan.nameVi) : plan.nameVi;
+  if (!window.confirm(tr("confirmDelete").replace("{name}", planName))) return;
 
   try {
     await apiRequest(`/api/admin/plans/${encodeURIComponent(planId)}`, {
       method: "DELETE",
       headers: adminHeaders(),
     });
-    showToast("Đã xóa gói.");
+    showToast(tr("deletedPlan"));
     await Promise.all([loadPlans(), loadStats()]);
   } catch (error) {
     showToast(error.message, true);
@@ -356,14 +529,14 @@ planTableBody?.addEventListener("click", (event) => {
 
 downloadCsvBtn?.addEventListener("click", () => {
   const csv = [
-    "Ma goi,Ten goi,Thoi han,Don vi,Gia VND,Trang thai,Nguoi mua",
+    tr("csvHeader"),
     ...plans.map((plan) => [
       plan.id,
-      plan.nameVi,
+      currentLang === "zh" ? (plan.nameZh || plan.nameVi) : plan.nameVi,
       plan.months,
-      plan.durationUnit === "days" ? "Ngay" : "Thang",
+      plan.durationUnit === "days" ? tr("days") : tr("months"),
       plan.amount,
-      plan.isActive ? "Dang ban" : "Tam an",
+      plan.isActive ? tr("active") : tr("hidden"),
       plan.buyerCount || 0,
     ].join(",")),
   ].join("\n");
@@ -374,8 +547,21 @@ downloadCsvBtn?.addEventListener("click", () => {
   anchor.download = "danh-sach-goi-dich-vu.csv";
   anchor.click();
   URL.revokeObjectURL(url);
-  showToast("Đã tải danh sách gói (CSV)");
+  showToast(tr("csvToast"));
 });
 
+window.addEventListener("message", (event) => {
+  if (event.data?.type === "set-admin-language") {
+    applyLanguage(event.data.lang);
+  }
+});
+
+window.addEventListener("storage", (event) => {
+  if (event.key === "v2-lang" && event.newValue) {
+    applyLanguage(event.newValue);
+  }
+});
+
+applyLanguage(currentLang);
 loadPlans();
 loadStats();

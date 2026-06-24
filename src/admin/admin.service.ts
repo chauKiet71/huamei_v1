@@ -2,6 +2,7 @@ import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { PaymentPlansService } from '../payment/payment-plans.service';
 import { ContentService } from '../content/content.service';
+import { AuthService } from '../auth/auth.service';
 
 @Injectable()
 export class AdminService {
@@ -9,6 +10,7 @@ export class AdminService {
     private readonly db: DatabaseService,
     private readonly paymentPlansService: PaymentPlansService,
     private readonly contentService: ContentService,
+    private readonly authService: AuthService,
   ) {}
 
   publicUser(row: any) {
@@ -16,6 +18,8 @@ export class AdminService {
     const isPremium = Boolean(
       row.is_premium && (!premiumUntil || premiumUntil.getTime() > Date.now()),
     );
+
+    const plan = row.role === 'employee' ? 'EMPLOYEE' : isPremium ? 'PREMIUM' : 'FREE';
 
     return {
       id: row.id,
@@ -26,7 +30,7 @@ export class AdminService {
       currentLevel: row.current_level || 'HSK2',
       avatarUrl: row.avatar_url || '',
       isPremium,
-      plan: isPremium ? 'PREMIUM' : 'FREE',
+      plan,
       premiumUntil: row.premium_until,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -64,6 +68,82 @@ export class AdminService {
       );
       return { users: result.rows.map((row) => this.publicUser(row)) };
     } catch (error: any) {
+      throw new HttpException(error.message || 'Lỗi server.', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  private calculatePremiumUntil(plan: string, durationDays: number): string | null {
+    if (plan !== 'PREMIUM') return null;
+    if (!Number.isFinite(durationDays) || durationDays <= 0) return null;
+    const premiumUntil = new Date();
+    premiumUntil.setDate(premiumUntil.getDate() + Math.floor(durationDays));
+    return premiumUntil.toISOString();
+  }
+
+  async createUser(
+    body: {
+      fullName?: string;
+      email?: string;
+      password?: string;
+      role?: string;
+      currentLevel?: string;
+      plan?: string;
+      durationDays?: number;
+      isActive?: boolean;
+    },
+    headers: Record<string, string | string[] | undefined>,
+  ) {
+    await this.assertAdmin(headers);
+
+    const fullName = String(body.fullName || '').trim();
+    const email = String(body.email || '').trim().toLowerCase();
+    const password = String(body.password || '');
+    const role = String(body.role || 'student').trim();
+    const currentLevel = String(body.currentLevel || 'HSK2').trim().toUpperCase();
+    const plan = String(body.plan || 'FREE').trim().toUpperCase();
+    const isActive = body.isActive !== false;
+    const durationDays = Math.max(0, Number(body.durationDays || 0));
+    const isPremium = plan === 'PREMIUM';
+    const roleToSave = plan === 'EMPLOYEE' ? 'employee' : role || 'student';
+    const premiumUntil = this.calculatePremiumUntil(plan, durationDays);
+
+    if (fullName.length < 2) {
+      throw new HttpException('Vui lòng nhập họ và tên.', HttpStatus.BAD_REQUEST);
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new HttpException('Email không hợp lệ.', HttpStatus.BAD_REQUEST);
+    }
+    if (password.length < 6) {
+      throw new HttpException('Mật khẩu cần tối thiểu 6 ký tự.', HttpStatus.BAD_REQUEST);
+    }
+    if (!/^HSK[1-6]$/.test(currentLevel)) {
+      throw new HttpException('Cấp độ không hợp lệ.', HttpStatus.BAD_REQUEST);
+    }
+    if (!['FREE', 'PREMIUM', 'EMPLOYEE'].includes(plan)) {
+      throw new HttpException('Gói tài khoản không hợp lệ.', HttpStatus.BAD_REQUEST);
+    }
+
+    try {
+      const result = await this.db.query(
+        `INSERT INTO users (full_name, email, password_hash, role, is_active, current_level, is_premium, premium_until)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at`,
+        [
+          fullName,
+          email,
+          this.authService.hashPassword(password),
+          roleToSave,
+          isActive,
+          currentLevel,
+          isPremium,
+          premiumUntil,
+        ],
+      );
+      return { user: this.publicUser(result.rows[0]) };
+    } catch (error: any) {
+      if (error.code === '23505') {
+        throw new HttpException('Email này đã được đăng ký.', HttpStatus.CONFLICT);
+      }
       throw new HttpException(error.message || 'Lỗi server.', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }

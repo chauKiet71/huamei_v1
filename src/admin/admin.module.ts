@@ -5,9 +5,10 @@ import { AdminContentController } from './admin-content.controller';
 import { AdminService } from './admin.service';
 import { PaymentModule } from '../payment/payment.module';
 import { ContentModule } from '../content/content.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [PaymentModule, ContentModule],
+  imports: [PaymentModule, ContentModule, AuthModule],
   controllers: [AdminController, AdminPlansController, AdminContentController],
   providers: [AdminService],
 })

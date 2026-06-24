@@ -451,6 +451,47 @@ async function listUsers(req) {
   return json({ users: result.rows.map(publicUser) });
 }
 
+function calculatePremiumUntil(plan, durationDays) {
+  if (plan !== "PREMIUM") return null;
+  if (!Number.isFinite(durationDays) || durationDays <= 0) return null;
+  const premiumUntil = new Date();
+  premiumUntil.setDate(premiumUntil.getDate() + Math.floor(durationDays));
+  return premiumUntil.toISOString();
+}
+
+async function createUser(req, body) {
+  await assertAdmin(req);
+  const fullName = String(body.fullName || "").trim();
+  const email = String(body.email || "").trim().toLowerCase();
+  const password = String(body.password || "");
+  const role = String(body.role || "student").trim();
+  const currentLevel = String(body.currentLevel || "HSK2").trim().toUpperCase();
+  const plan = String(body.plan || "FREE").trim().toUpperCase();
+  const isActive = body.isActive !== false;
+  const durationDays = Math.max(0, Number(body.durationDays || 0));
+  const isPremium = plan === "PREMIUM";
+  const premiumUntil = calculatePremiumUntil(plan, durationDays);
+
+  if (fullName.length < 2) throw apiError("Vui lòng nhập họ và tên.", 400);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw apiError("Email không hợp lệ.", 400);
+  if (password.length < 6) throw apiError("Mật khẩu cần tối thiểu 6 ký tự.", 400);
+  if (!/^HSK[1-6]$/.test(currentLevel)) throw apiError("Cấp độ không hợp lệ.", 400);
+  if (!["FREE", "PREMIUM"].includes(plan)) throw apiError("Gói tài khoản không hợp lệ.", 400);
+
+  try {
+    const result = await query(
+      `INSERT INTO users (full_name, email, password_hash, role, is_active, current_level, is_premium, premium_until)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at`,
+      [fullName, email, hashPassword(password), role || "student", isActive, currentLevel, isPremium, premiumUntil],
+    );
+    return json({ user: publicUser(result.rows[0]) });
+  } catch (error) {
+    if (error.code === "23505") throw apiError("Email này đã được đăng ký.", 409);
+    throw error;
+  }
+}
+
 async function updateUser(req, id, body) {
   await assertAdmin(req);
   const fullName = String(body.fullName || "").trim();
@@ -1141,6 +1182,7 @@ async function route(req) {
   const ownProfileMatch = path.match(/^\/api\/users\/([^/]+)\/profile$/);
   if (ownProfileMatch && req.method === "PATCH") return updateOwnProfile(req, decodeURIComponent(ownProfileMatch[1]), body);
   if (req.method === "GET" && path === "/api/admin/users") return listUsers(req);
+  if (req.method === "POST" && path === "/api/admin/users") return createUser(req, body);
   const adminUserMatch = path.match(/^\/api\/admin\/users\/([^/]+)$/);
   if (adminUserMatch && req.method === "PATCH") return updateUser(req, decodeURIComponent(adminUserMatch[1]), body);
   if (adminUserMatch && req.method === "DELETE") return deleteUser(req, decodeURIComponent(adminUserMatch[1]));

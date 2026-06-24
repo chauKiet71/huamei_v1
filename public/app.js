@@ -62,7 +62,7 @@ const i18n = {
     vocab: "Bộ từ",
     subscriptions: "Gói đăng ký",
     homeTab: "Trang chủ",
-    dailyTabNav: "Giao tiếp",
+    dailyTabNav: "Thông dụng",
   },
   zh: {
     brandSubtitle: "给越南学生使用的中文练习",
@@ -124,7 +124,7 @@ const i18n = {
     vocab: "生词本",
     subscriptions: "订阅套餐",
     homeTab: "首页",
-    dailyTabNav: "交流",
+    dailyTabNav: "常见的",
   },
 };
 
@@ -454,6 +454,8 @@ const state = {
   adminUserSearch: "",
   adminUserLevelFilter: "all",
   adminUserPlanFilter: "all",
+  adminUserPage: 1,
+  adminUserPageSize: 9,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -1584,6 +1586,7 @@ function isActivePremiumUser(user) {
 
 function hasPremiumAccess() {
   if (state.user?.role === "admin") return true;
+  if (state.user?.role === "employee") return true;
   return isActivePremiumUser(state.user);
 }
 
@@ -1655,16 +1658,6 @@ function promptUpgradeLocked() {
   }
   showToast(isVi ? "Nội dung này yêu cầu gói Pro." : "此内容需要 Pro 套餐。");
   showUpgradePlansModal();
-}
-
-function requireLoginForPractice() {
-  const isVi = state.lang === "vi";
-  if (!state.user) {
-    showToast(isVi ? "Vui lòng đăng nhập để luyện viết." : "请先登录以进行书写练习。");
-    showModal("login");
-    return false;
-  }
-  return true;
 }
 
 function lockedContentCtaText() {
@@ -1802,7 +1795,9 @@ const HSK_LEVEL_DEFAULT_COVERS = {
   HSK6: "assets/hsk6-card-bg.png",
 };
 const DEFAULT_HSK_LEVEL_COVER = HSK_LEVEL_DEFAULT_COVERS.HSK1;
-const MAX_HSK_LEVEL_COVER_BYTES = 900000;
+const MAX_HSK_LEVEL_COVER_MB = 5;
+const MAX_HSK_LEVEL_COVER_BYTES = MAX_HSK_LEVEL_COVER_MB * 1024 * 1024;
+const MAX_HSK_LEVEL_COVER_DATA_URL_CHARS = Math.ceil(MAX_HSK_LEVEL_COVER_BYTES * 1.4) + 256;
 const MAX_ACCOUNT_AVATAR_SOURCE_BYTES = 5 * 1024 * 1024;
 const ACCOUNT_AVATAR_SIZE = 320;
 const ACCOUNT_DEFAULT_AVATAR = "assets/review_user_1.png";
@@ -1880,7 +1875,7 @@ async function loadAdminContentLocks() {
     state.adminContentDailyLocks = buildAdminContentDailyLocksMap(dailyData.locks || []);
     state.adminHskLevelCovers = buildAdminHskLevelCoversMap(coverData.covers || []);
     const lockedHsk = (hskData.locks || []).filter((item) => Number(item.freeItemLimit || 0) > 0).length;
-    const lockedDaily = (dailyData.locks || []).filter((item) => item.lockedForFree).length;
+    const lockedDaily = (dailyData.locks || []).filter((item) => item.lockedForFree || Number(item.freeItemLimit || 0) > 0).length;
     state.adminContentStatus = isVi
       ? `Đã tải ${lockedHsk} bài HSK có giới hạn Free và ${lockedDaily} chủ đề giao tiếp đang khóa cho gói Free.`
       : `已加载 ${lockedHsk} 个 HSK 课程限免配置和 ${lockedDaily} 个交际主题锁定。`;
@@ -2023,8 +2018,8 @@ function renderAdminContentDailySectionHTML(isVi) {
   const lockedCount = dailyThemes.filter((theme) => locksMap[theme.id]?.lockedForFree === true || Number(locksMap[theme.id]?.freeItemLimit || 0) > 0).length;
   const rows = dailyThemes.map((theme, index) => {
     const lockConfig = locksMap[theme.id] || { lockedForFree: false, freeItemLimit: 0 };
-    const locked = lockConfig.lockedForFree === true;
     const freeItemLimit = Math.max(0, Number(lockConfig.freeItemLimit || 0));
+    const locked = lockConfig.lockedForFree === true && freeItemLimit <= 0;
     const cardMeta = getDailyThemeCardMeta(theme);
     return `
       <tr>
@@ -2042,20 +2037,14 @@ function renderAdminContentDailySectionHTML(isVi) {
             data-admin-content-daily-limit="${escapeAttr(theme.id)}"
           />
         </td>
-        <td>
-          <label class="admin-content-lock-toggle">
-            <input type="checkbox" data-admin-content-daily-lock="${escapeAttr(theme.id)}" ${locked ? "checked" : ""} />
-            <span>${locked ? (isVi ? "Khóa Free" : "锁定 Free") : (isVi ? "Mở Free" : "Free 可用")}</span>
-          </label>
-        </td>
       </tr>
     `;
   }).join("");
 
   return `
     <p class="admin-content-subtitle">${isVi
-      ? `Chủ đề giao tiếp được bật khóa sẽ không mở với khách chưa đăng nhập và tài khoản gói Free. (${lockedCount}/${dailyThemes.length} chủ đề đang khóa)`
-      : `启用的交际主题将对 Free 用户锁定。（${lockedCount}/${dailyThemes.length}）`}</p>
+      ? `Nhập số thứ tự câu cuối cùng khách chưa đăng nhập và tài khoản Free được làm trong từng chủ đề giao tiếp. Ví dụ 6 = được học đến hết câu 6, sang câu 7 sẽ bị chặn. Để trống hoặc nhập 0 = không giới hạn. (${lockedCount}/${dailyThemes.length} chủ đề đang giới hạn hoặc khóa)`
+      : `输入 Free 用户在每个交际主题中可做到第几题。例如 6 = 可做到第 6 题，第 7 题会被拦截。留空或 0 = 不限。（${lockedCount}/${dailyThemes.length}）`}</p>
     <div class="admin-table-wrap">
       <table class="admin-users-table admin-content-table">
         <thead>
@@ -2063,17 +2052,17 @@ function renderAdminContentDailySectionHTML(isVi) {
             <th>#</th>
             <th>ID</th>
             <th>${isVi ? "Chủ đề" : "主题"}</th>
-            <th>${isVi ? "Trạng thái Free" : "Free 状态"}</th>
+            <th>${isVi ? "Miễn phí đến câu" : "免费到第几题"}</th>
           </tr>
         </thead>
         <tbody>
-          ${rows || `<tr><td colspan="4" class="admin-empty">${isVi ? "Không có chủ đề." : "暂无主题。"}</td></tr>`}
+          ${rows || `<tr><td colspan="5" class="admin-empty">${isVi ? "Không có chủ đề." : "暂无主题。"}</td></tr>`}
         </tbody>
       </table>
     </div>
     <div class="admin-content-actions">
-      <button id="adminLockAllContentBtn" type="button">${isVi ? "Khóa tất cả chủ đề" : "锁定全部主题"}</button>
-      <button id="adminUnlockAllContentBtn" type="button">${isVi ? "Mở khóa tất cả chủ đề" : "解锁全部主题"}</button>
+      <button id="adminLockAllContentBtn" type="button">${isVi ? "Giới hạn tất cả đến câu 8" : "全部限到第 8 题"}</button>
+      <button id="adminUnlockAllContentBtn" type="button">${isVi ? "Bỏ giới hạn tất cả chủ đề" : "取消全部限制"}</button>
     </div>
   `;
 }
@@ -2690,8 +2679,17 @@ async function loadAdminUsers() {
 }
 
 function getAdminUserPlan(user) {
+  if (user?.plan === "EMPLOYEE") return "EMPLOYEE";
+  if (user?.role === "employee") return "EMPLOYEE";
   if (user?.role === "admin" || isActivePremiumUser(user)) return "PREMIUM";
   return "FREE";
+}
+
+function getAdminUserPlanLabel(plan, isVi = state.lang === "vi") {
+  if (plan === "PREMIUM") return "Pro";
+  if (plan === "EMPLOYEE") return isVi ? "Nhân viên" : "员工";
+  if (plan === "FREE") return isVi ? "Free" : "Free";
+  return plan || "";
 }
 
 function getFilteredAdminUsers() {
@@ -2710,6 +2708,46 @@ function getFilteredAdminUsers() {
     const id = normalizeLatin(String(user.id || ""));
     return name.includes(query) || email.includes(query) || id.includes(query);
   });
+}
+
+function getAdminUserPagination(users) {
+  const pageSize = Math.max(1, Number(state.adminUserPageSize || 9));
+  const totalPages = Math.max(1, Math.ceil(users.length / pageSize));
+  const currentPage = Math.min(Math.max(1, Number(state.adminUserPage || 1)), totalPages);
+  state.adminUserPage = currentPage;
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, users.length);
+  return {
+    pageSize,
+    totalPages,
+    currentPage,
+    startIndex,
+    endIndex,
+    pageUsers: users.slice(startIndex, endIndex),
+  };
+}
+
+function renderAdminUserPaginationHTML(totalPages, currentPage) {
+  const pages = [];
+  if (totalPages <= 4) {
+    for (let page = 1; page <= totalPages; page += 1) pages.push(page);
+  } else {
+    pages.push(1);
+    const middleStart = Math.max(2, currentPage - 1);
+    const middleEnd = Math.min(totalPages - 1, currentPage + 1);
+    if (middleStart > 2) pages.push("ellipsis-start");
+    for (let page = middleStart; page <= middleEnd; page += 1) pages.push(page);
+    if (middleEnd < totalPages - 1) pages.push("ellipsis-end");
+    pages.push(totalPages);
+  }
+
+  return `
+    <button type="button" data-admin-user-page="${Math.max(1, currentPage - 1)}" ${currentPage <= 1 ? "disabled" : ""}>‹</button>
+    ${pages.map((page) => typeof page === "number"
+      ? `<button type="button" class="${page === currentPage ? "active" : ""}" data-admin-user-page="${page}">${page}</button>`
+      : `<span>...</span>`).join("")}
+    <button type="button" data-admin-user-page="${Math.min(totalPages, currentPage + 1)}" ${currentPage >= totalPages ? "disabled" : ""}>›</button>
+  `;
 }
 
 function buildAdminUserRowsHTML(users, isVi) {
@@ -2734,7 +2772,7 @@ function buildAdminUserRowsHTML(users, isVi) {
         </td>
         <td>${escapeAttr(user.email || "")}</td>
         <td><span class="admin-pill level">${escapeAttr(currentLevel)}</span></td>
-        <td><span class="admin-pill ${plan.toLowerCase()}">${plan}</span></td>
+        <td><span class="admin-pill ${plan.toLowerCase()}">${escapeAttr(getAdminUserPlanLabel(plan, isVi))}</span></td>
         <td>
           <div class="admin-duration">
             <strong>${displayDuration}</strong>
@@ -2743,10 +2781,9 @@ function buildAdminUserRowsHTML(users, isVi) {
         </td>
         <td>
           <div class="admin-row-actions">
-            <button class="admin-edit-user" type="button" aria-label="${isVi ? "Sửa" : "编辑"}">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+            <button class="admin-delete-user" type="button" aria-label="${isVi ? "Xóa" : "删除"}">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
             </button>
-            <button class="admin-more-user" type="button" aria-label="More">⋮</button>
           </div>
           <input type="hidden" data-field="fullName" value="${escapeAttr(user.fullName || "")}" />
           <input type="hidden" data-field="email" value="${escapeAttr(user.email || "")}" />
@@ -2763,21 +2800,25 @@ function updateAdminUsersList() {
   if (state.screen !== "admin" || (state.adminTab || "users") !== "users") return;
   const isVi = state.lang === "vi";
   const filteredUsers = getFilteredAdminUsers();
+  const pagination = getAdminUserPagination(filteredUsers);
   const tbody = screens.admin?.querySelector(".admin-users-table tbody");
   const footerText = screens.admin?.querySelector(".admin-table-footer > span");
+  const footerPagination = screens.admin?.querySelector(".admin-table-footer > div");
   if (!tbody) {
     renderAdmin();
     return;
   }
-  tbody.innerHTML = filteredUsers.length > 0
-    ? buildAdminUserRowsHTML(filteredUsers, isVi)
+  tbody.innerHTML = pagination.pageUsers.length > 0
+    ? buildAdminUserRowsHTML(pagination.pageUsers, isVi)
     : `<tr><td colspan="6" class="admin-empty">${isVi ? "Không có người dùng phù hợp bộ lọc." : "没有符合筛选条件的用户。"}</td></tr>`;
   if (footerText) {
-    const total = state.adminUsers.length;
-    const shown = filteredUsers.length;
+    const total = filteredUsers.length;
     footerText.textContent = isVi
-      ? `Hiển thị ${shown > 0 ? 1 : 0} - ${shown} trên ${total} kết quả`
-      : `显示 ${shown} / ${total} 个结果`;
+      ? `Hiển thị ${total > 0 ? pagination.startIndex + 1 : 0} - ${pagination.endIndex} trên ${total} kết quả`
+      : `显示 ${total > 0 ? pagination.startIndex + 1 : 0} - ${pagination.endIndex} / ${total} 个结果`;
+  }
+  if (footerPagination) {
+    footerPagination.innerHTML = renderAdminUserPaginationHTML(pagination.totalPages, pagination.currentPage);
   }
 }
 
@@ -2807,17 +2848,32 @@ function renderAdmin() {
   }
 
   const totalUsers = state.adminUsers.length;
-  const proUsers = state.adminUsers.filter((user) => user.role === "admin" || isActivePremiumUser(user)).length;
-  const vipRate = totalUsers > 0 ? Math.round((proUsers / totalUsers) * 1000) / 10 : 24.8;
+  const studentUsers = state.adminUsers.filter((user) => user.role !== "admin");
+  const premiumStudentUsers = studentUsers.filter((user) => isActivePremiumUser(user));
+  const vipRate = studentUsers.length > 0 ? Math.round((premiumStudentUsers.length / studentUsers.length) * 1000) / 10 : 0;
+  const vipRateMeta = isVi
+    ? `${premiumStudentUsers.length}/${studentUsers.length} tài khoản đã lên Pro`
+    : `${premiumStudentUsers.length}/${studentUsers.length} 个账户已升级 Pro`;
   const adminTab = state.adminTab || "users";
   const adminMainClass = [
     adminTab === "subscriptions" ? "admin-main--subscriptions" : "",
     adminTab === "content" ? "admin-main--content" : "",
   ].filter(Boolean).join(" ");
   const filteredUsers = getFilteredAdminUsers();
+  const userPagination = getAdminUserPagination(filteredUsers);
   const levelFilter = state.adminUserLevelFilter || "all";
   const planFilter = state.adminUserPlanFilter || "all";
-  const rows = buildAdminUserRowsHTML(filteredUsers, isVi);
+  const rows = buildAdminUserRowsHTML(userPagination.pageUsers, isVi);
+  const adminTitleMap = {
+    users: isVi ? "Quản lý người dùng" : "用户管理",
+    subscriptions: isVi ? "Quản lý gói đăng ký" : "订阅套餐管理",
+    content: isVi ? "Quản lý nội dung" : "内容管理",
+  };
+  const adminSubtitleMap = {
+    users: `<strong>${totalUsers || 0}</strong> ${isVi ? "người dùng đã đăng ký" : "注册用户"} <span>↗ +12% ${isVi ? "tháng này" : "本月"}</span>`,
+    subscriptions: isVi ? "Theo dõi doanh thu, giao dịch và các gói Pro đang bán." : "跟踪收入、交易和正在销售的 Pro 套餐。",
+    content: isVi ? "Cấu hình giới hạn miễn phí, ảnh bìa HSK và quyền truy cập nội dung." : "配置免费限制、HSK 封面和内容访问权限。",
+  };
 
   screens.admin.innerHTML = `
     <div class="admin-console">
@@ -2826,14 +2882,22 @@ function renderAdmin() {
           <span>中</span>
           <div><strong>HuaMei</strong><small>ADMIN CONSOLE</small></div>
         </div>
+        <button class="admin-language-inline-btn" id="adminLanguageInlineBtn" type="button">
+          <span class="${isVi ? "active" : ""}">VI</span>
+          <span class="${state.lang === "zh" ? "active" : ""}">中文</span>
+        </button>
         <nav>
-          <button type="button"><span>▦</span>Dashboard</button>
-          <button id="adminUsersTabBtn" class="${adminTab === "users" ? "active" : ""}" type="button"><span>👥</span>User Management</button>
-          <button id="adminSubscriptionsTabBtn" class="${adminTab === "subscriptions" ? "active" : ""}" type="button"><span>▣</span>Subscription Plans</button>
-          <button id="adminContentTabBtn" class="${adminTab === "content" ? "active" : ""}" type="button"><span>▤</span>Content Management</button>
-          <button type="button"><span>⚙</span>Settings</button>
+          <button id="adminUsersTabBtn" class="${adminTab === "users" ? "active" : ""}" type="button"><span>👥</span>${isVi ? "Người dùng" : "用户"}</button>
+          <button id="adminSubscriptionsTabBtn" class="${adminTab === "subscriptions" ? "active" : ""}" type="button"><span>▣</span>${isVi ? "Gói dịch vụ" : "套餐"}</button>
+          <button id="adminContentTabBtn" class="${adminTab === "content" ? "active" : ""}" type="button"><span>▤</span>${isVi ? "Nội dung" : "内容"}</button>
         </nav>
-        <button class="admin-new-course" type="button">＋ New Course</button>
+        
+        <div class="admin-sidebar-foot">
+          <button class="admin-language-btn" id="adminLanguageBtn" type="button">
+            <span>${isVi ? "Ngôn ngữ" : "语言"}</span>
+            <strong>${isVi ? "Tiếng Việt / 中文" : "中文 / Tiếng Việt"}</strong>
+          </button>
+        </div>
       </aside>
 
       <main class="admin-main ${adminMainClass}">
@@ -2851,10 +2915,14 @@ function renderAdmin() {
 
         <section class="admin-title-row">
           <div>
-            <h1>${isVi ? "Quản lý người dùng" : "用户管理"}</h1>
-            <p><strong>${totalUsers || 0}</strong> ${isVi ? "người dùng đã đăng ký" : "注册用户"} <span>↗ +12% tháng này</span></p>
+            <h1>${adminTitleMap[adminTab] || adminTitleMap.users}</h1>
+            <p>${adminSubtitleMap[adminTab] || adminSubtitleMap.users}</p>
           </div>
-          <button class="admin-add-user" type="button">👥 ${isVi ? "Thêm người dùng mới" : "添加用户"}</button>
+          ${adminTab === "users" ? `
+            <button class="admin-create-account-card" id="adminCreateAccountBtn" type="button">
+              <strong>${isVi ? "Tạo tài khoản" : "创建账户"}</strong>
+            </button>
+          ` : ""}
         </section>
 
         <section class="admin-dashboard-grid">
@@ -2870,13 +2938,14 @@ function renderAdmin() {
             <select id="adminUserPlanFilter" class="admin-filter-select" aria-label="${isVi ? "Lọc theo gói" : "按套餐筛选"}">
               <option value="all" ${planFilter === "all" ? "selected" : ""}>${isVi ? "Tất cả gói" : "所有套餐"}</option>
               <option value="FREE" ${planFilter === "FREE" ? "selected" : ""}>Free</option>
-              <option value="PREMIUM" ${planFilter === "PREMIUM" ? "selected" : ""}>Premium</option>
+              <option value="PREMIUM" ${planFilter === "PREMIUM" ? "selected" : ""}>Pro</option>
+              <option value="EMPLOYEE" ${planFilter === "EMPLOYEE" ? "selected" : ""}>${isVi ? "Nhân viên" : "员工"}</option>
             </select>
           </div>
           <aside class="admin-vip-card">
             <span>${isVi ? "Tỷ lệ chuyển đổi VIP" : "VIP 转化率"}</span>
             <strong>${vipRate}%</strong>
-            <small>▲ 4% ${isVi ? "so với kỳ trước" : "较上期"}</small>
+            <small>${vipRateMeta}</small>
           </aside>
         </section>
 
@@ -2899,16 +2968,16 @@ function renderAdmin() {
             </table>
           </div>
           <footer class="admin-table-footer">
-            <span>${isVi ? `Hiển thị ${filteredUsers.length > 0 ? 1 : 0} - ${filteredUsers.length} trên ${totalUsers} kết quả` : `显示 ${filteredUsers.length} / ${totalUsers} 个结果`}</span>
-            <div><button>‹</button><button class="active">1</button><button>2</button><button>3</button><span>...</span><button>›</button></div>
+            <span>${isVi ? `Hiển thị ${filteredUsers.length > 0 ? userPagination.startIndex + 1 : 0} - ${userPagination.endIndex} trên ${filteredUsers.length} kết quả` : `显示 ${filteredUsers.length > 0 ? userPagination.startIndex + 1 : 0} - ${userPagination.endIndex} / ${filteredUsers.length} 个结果`}</span>
+            <div>${renderAdminUserPaginationHTML(userPagination.totalPages, userPagination.currentPage)}</div>
           </footer>
         </section>
 
         <section class="admin-subscriptions-panel">
           <iframe
             class="admin-subscriptions-frame"
-            src="subscriptions.html"
-            title="Quản lý gói đăng ký"
+            src="subscriptions.html?lang=${encodeURIComponent(state.lang)}"
+            title="${isVi ? "Quản lý gói đăng ký" : "订阅套餐管理"}"
             loading="lazy"></iframe>
         </section>
 
@@ -3011,6 +3080,177 @@ function showModal(type) {
     } finally {
       submitBtn.disabled = false;
       submitBtn.textContent = isLogin ? (isVi ? "Đăng nhập" : "登录") : (isVi ? "Đăng ký" : "注册");
+    }
+  };
+}
+
+function showAdminCreateAccountModal() {
+  const isVi = state.lang === "vi";
+  const existing = document.getElementById("adminCreateAccountModal");
+  if (existing) existing.remove();
+
+  const modalDiv = document.createElement("div");
+  modalDiv.id = "adminCreateAccountModal";
+  modalDiv.className = "auth-modal-overlay admin-create-account-overlay";
+  modalDiv.innerHTML = `
+    <div class="auth-modal-content admin-create-account-modal">
+      <button class="auth-modal-close" id="closeAdminCreateAccountModal" type="button">&times;</button>
+      <div class="auth-modal-logo">＋</div>
+      <h2>${isVi ? "Tạo tài khoản học viên" : "创建学员账户"}</h2>
+      <p class="auth-modal-sub">${isVi ? "Nhập thông tin tài khoản theo dữ liệu quản lý người dùng." : "按用户管理字段填写账户信息。"}</p>
+
+      <form id="adminCreateAccountForm" class="auth-form admin-create-account-form">
+        <div class="form-group">
+          <label for="adminCreateName">${isVi ? "Họ và tên" : "姓名"}</label>
+          <input type="text" id="adminCreateName" placeholder="${isVi ? "Nguyễn Nhi" : "Nguyễn Nhi"}" required />
+        </div>
+        <div class="form-group">
+          <label for="adminCreateEmail">Email</label>
+          <input type="email" id="adminCreateEmail" placeholder="student@gmail.com" required />
+        </div>
+        <div class="admin-create-account-grid">
+          <div class="form-group">
+            <label for="adminCreateLevel">${isVi ? "Cấp độ" : "等级"}</label>
+            <select id="adminCreateLevel">
+              ${Object.keys(hskLevels).map((level) => `<option value="${level}" ${level === "HSK2" ? "selected" : ""}>${level}</option>`).join("")}
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="adminCreatePlan">${isVi ? "Gói" : "套餐"}</label>
+            <select id="adminCreatePlan">
+              <option value="FREE">Free</option>
+              <option value="PREMIUM">Pro</option>
+            </select>
+          </div>
+        </div>
+        <div class="admin-create-account-grid admin-create-account-grid--single">
+          <div class="form-group">
+            <label for="adminCreateDuration">${isVi ? "Thời hạn Pro (ngày)" : "Pro 期限（天）"}</label>
+            <input type="number" id="adminCreateDuration" min="0" step="1" placeholder="N/A" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="adminCreatePassword">${isVi ? "Mật khẩu khởi tạo" : "初始密码"}</label>
+          <input type="password" id="adminCreatePassword" placeholder="••••••••" required />
+        </div>
+        <p class="auth-form-message" id="adminCreateAccountMessage" role="status"></p>
+        <button type="submit" class="btn-auth-submit">${isVi ? "Tạo tài khoản" : "创建账户"}</button>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(modalDiv);
+
+  const closeModal = () => modalDiv.remove();
+  modalDiv.querySelector("#closeAdminCreateAccountModal").onclick = closeModal;
+  modalDiv.onclick = (event) => {
+    if (event.target === modalDiv) closeModal();
+  };
+
+  modalDiv.querySelector("#adminCreateAccountForm").onsubmit = async (event) => {
+    event.preventDefault();
+    const message = modalDiv.querySelector("#adminCreateAccountMessage");
+    const submitBtn = modalDiv.querySelector(".btn-auth-submit");
+    const payload = {
+      fullName: modalDiv.querySelector("#adminCreateName").value.trim(),
+      email: modalDiv.querySelector("#adminCreateEmail").value.trim(),
+      currentLevel: modalDiv.querySelector("#adminCreateLevel").value,
+      plan: modalDiv.querySelector("#adminCreatePlan").value,
+      durationDays: Number(modalDiv.querySelector("#adminCreateDuration").value || 0),
+      isActive: true,
+      password: modalDiv.querySelector("#adminCreatePassword").value,
+    };
+
+    message.textContent = "";
+    message.className = "auth-form-message";
+    submitBtn.disabled = true;
+    submitBtn.textContent = isVi ? "Đang tạo..." : "正在创建...";
+
+    try {
+      const data = await apiRequest("/api/admin/users", {
+        method: "POST",
+        headers: { "X-Admin-User-Id": state.user?.id || "" },
+        body: JSON.stringify(payload),
+      });
+      state.adminUsers = [data.user, ...state.adminUsers.filter((user) => user.id !== data.user.id)];
+      renderAdmin();
+      showToast(isVi ? "Đã tạo tài khoản học viên." : "已创建学员账户。");
+      closeModal();
+    } catch (error) {
+      message.textContent = error.message;
+      message.classList.add("error");
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = isVi ? "Tạo tài khoản" : "创建账户";
+    }
+  };
+}
+
+function showAdminDeleteUserConfirm(row) {
+  const isVi = state.lang === "vi";
+  const userId = row?.dataset?.userId || "";
+  const email = row?.querySelector('[data-field="email"]')?.value?.trim() || "";
+  const name = row?.querySelector('[data-field="fullName"]')?.value?.trim() || email;
+  if (!userId) return;
+
+  const existing = document.getElementById("adminDeleteUserModal");
+  if (existing) existing.remove();
+
+  const modalDiv = document.createElement("div");
+  modalDiv.id = "adminDeleteUserModal";
+  modalDiv.className = "auth-modal-overlay admin-delete-user-overlay";
+  modalDiv.innerHTML = `
+    <div class="auth-modal-content admin-delete-user-modal">
+      <button class="auth-modal-close" id="closeAdminDeleteUserModal" type="button">&times;</button>
+      <div class="auth-modal-logo admin-delete-user-logo">!</div>
+      <h2>${isVi ? "Xóa người dùng" : "删除用户"}</h2>
+      <p class="auth-modal-sub">${isVi ? "Bạn có chắc chắn muốn xóa người dùng này không" : "确定要删除此用户吗？"}</p>
+      ${name ? `<p class="admin-delete-user-target">${escapeAttr(name)}${email && email !== name ? `<br><small>${escapeAttr(email)}</small>` : ""}</p>` : ""}
+      <p class="auth-form-message" id="adminDeleteUserMessage" role="status"></p>
+      <div class="admin-delete-user-actions">
+        <button type="button" class="admin-delete-user-cancel" id="cancelAdminDeleteUserBtn">${isVi ? "Hủy" : "取消"}</button>
+        <button type="button" class="admin-delete-user-confirm" id="confirmAdminDeleteUserBtn">${isVi ? "Xóa" : "删除"}</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modalDiv);
+
+  const closeModal = () => modalDiv.remove();
+  const confirmBtn = modalDiv.querySelector("#confirmAdminDeleteUserBtn");
+  const cancelBtn = modalDiv.querySelector("#cancelAdminDeleteUserBtn");
+  const message = modalDiv.querySelector("#adminDeleteUserMessage");
+
+  modalDiv.querySelector("#closeAdminDeleteUserModal").onclick = closeModal;
+  cancelBtn.onclick = closeModal;
+  modalDiv.onclick = (event) => {
+    if (event.target === modalDiv) closeModal();
+  };
+
+  confirmBtn.onclick = async () => {
+    message.textContent = "";
+    message.className = "auth-form-message";
+    confirmBtn.disabled = true;
+    cancelBtn.disabled = true;
+    confirmBtn.textContent = isVi ? "Đang xóa..." : "正在删除...";
+
+    try {
+      await apiRequest(`/api/admin/users/${encodeURIComponent(userId)}`, {
+        method: "DELETE",
+        headers: {
+          "X-Admin-User-Id": state.user?.id || "",
+        },
+      });
+      state.adminUsers = state.adminUsers.filter((user) => user.id !== userId);
+      closeModal();
+      updateAdminUsersList();
+      showToast(isVi ? "Đã xóa người dùng." : "已删除用户。");
+    } catch (error) {
+      message.textContent = error.message;
+      message.classList.add("error");
+      confirmBtn.disabled = false;
+      cancelBtn.disabled = false;
+      confirmBtn.textContent = isVi ? "Xóa" : "删除";
     }
   };
 }
@@ -3176,13 +3416,6 @@ function renderAccount() {
                 <path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
               </svg>
             </button>
-            ${hasPremium ? `
-              <span class="account-pro-badge">
-                <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true">
-                  <path d="M12 2l2.4 5.2 5.6.7-4.1 3.9 1 5.6-4.9-2.7-4.9 2.7 1-5.6L4 7.9l5.6-.7L12 2z" />
-                </svg>
-              </span>
-            ` : ""}
           </div>
           <h3>${escapeAttr(displayName)}</h3>
           <p>${isVi ? "Học viên tích cực" : "积极学员"}</p>
@@ -3241,11 +3474,6 @@ function renderAccount() {
                 </svg>
               </span>
               <h2>${isVi ? "Thông tin cơ bản" : "基本信息"}</h2>
-              <button type="button" class="account-edit-toggle" id="accountEditToggleBtn" aria-label="${isVi ? "Chỉnh sửa thông tin" : "编辑资料"}">
-                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
-                </svg>
-              </button>
             </div>
             <em>${isVi ? `Tham gia từ: ${joinedDate}` : `加入时间：${joinedDate}`}</em>
           </div>
@@ -3270,7 +3498,7 @@ function renderAccount() {
                 <option value="zh" ${state.lang === "zh" ? "selected" : ""}>中文</option>
               </select>
             </label>
-            <div class="account-form-actions account-desktop-only is-hidden" hidden>
+            <div class="account-form-actions account-desktop-only">
               <button class="account-save-btn" type="submit">${isVi ? "Lưu thay đổi" : "保存更改"}</button>
               <button class="account-cancel-btn" type="button" id="cancelAccountPanel">${isVi ? "Hủy bỏ" : "取消"}</button>
             </div>
@@ -3883,7 +4111,7 @@ function renderHomeDesktopSavedVocabHTML(isVi) {
 function renderHomeDesktopModulesHTML(isVi) {
   return `
     <section class="home-desktop-modules" aria-label="${isVi ? "Khóa học chính" : "主要课程"}">
-      <article class="home-desktop-module-card home-desktop-module-card--hsk">
+      <article class="home-desktop-module-card home-desktop-module-card--hsk" data-home-module="hsk" role="button" tabindex="0">
         <img
           class="home-desktop-module-cover"
           src="assets/home-module-hsk-pc.png"
@@ -3900,11 +4128,11 @@ function renderHomeDesktopModulesHTML(isVi) {
           </button>
         </div>
       </article>
-      <article class="home-desktop-module-card home-desktop-module-card--daily">
+      <article class="home-desktop-module-card home-desktop-module-card--daily" data-home-module="daily" role="button" tabindex="0">
         <img class="home-desktop-module-cover" src="assets/home-module-daily-pc.png" alt="" onerror="this.src='assets/home-module-daily.png'" />
         <div class="home-desktop-module-content">
           <div>
-            <h3>${isVi ? "Giao tiếp" : "交际"}</h3>
+            <h3>${isVi ? "Thông dụng" : "常见的"}</h3>
             <p>${isVi ? "Luyện nói & viết" : "听说读写"}</p>
           </div>
           <button type="button" class="home-desktop-module-btn" data-home-module="daily">
@@ -3912,7 +4140,7 @@ function renderHomeDesktopModulesHTML(isVi) {
           </button>
         </div>
       </article>
-      <article class="home-desktop-module-card home-desktop-module-card--vocab">
+      <article class="home-desktop-module-card home-desktop-module-card--vocab" data-home-module="vocab" role="button" tabindex="0">
         <img
           class="home-desktop-module-cover"
           src="assets/home-module-vocab-pc.png"
@@ -4043,7 +4271,7 @@ function renderHomeDesktopLayoutHTML(isVi) {
   const avatarHTML = avatarUrl
     ? `<img src="${escapeAttr(avatarUrl)}" alt="${escapeAttr(userName)}" />`
     : escapeHtml(userInitial);
-  const accountTypeLabel = state.user?.role === "admin" ? "Admin" : hasPremiumAccess() ? "Pro" : "Free";
+  const accountTypeLabel = state.user?.role === "admin" ? "Admin" : state.user?.role === "employee" ? (isVi ? "Nhân viên" : "员工") : hasPremiumAccess() ? "Pro" : "Free";
   const studyHours = Math.floor(stats.studyMinutes / 60);
   const studyMins = stats.studyMinutes % 60;
   const studyLabel = studyHours > 0
@@ -4074,6 +4302,10 @@ function renderHomeDesktopLayoutHTML(isVi) {
             <h1>${isVi ? "Luyện viết tiếng Trung" : "中文书写练习"}</h1>
             <p>${isVi ? "Viết đúng – Nhớ lâu" : "正确书写 · 终身受益"}</p>
           </div>
+          <button type="button" class="home-desktop-lang-btn" id="homeDesktopTopbarLanguageBtn" aria-label="${isVi ? "Đổi ngôn ngữ" : "切换语言"}">
+            <span class="${isVi ? "active" : ""}">VI</span>
+            <span class="${state.lang === "zh" ? "active" : ""}">中文</span>
+          </button>
         </header>
 
 
@@ -4178,7 +4410,7 @@ function renderHomeMobileTopbarHTML(isVi) {
             <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" aria-hidden="true">
               <path d="M12 2l2.2 4.8 5.3.7-3.8 3.7.9 5.3-4.6-2.5-4.6 2.5.9-5.3L4.5 7.5l5.3-.7L12 2z"/>
             </svg>
-            ${escapeHtml(state.user?.role === "admin" ? "Admin" : hasPremiumAccess() ? "Pro" : "Free")}
+            ${escapeHtml(state.user?.role === "admin" ? "Admin" : state.user?.role === "employee" ? (isVi ? "Nhân viên" : "员工") : hasPremiumAccess() ? "Pro" : "Free")}
           </span>
         </span>`}
       </div>
@@ -4810,7 +5042,7 @@ function renderDailyCourse() {
       </div>
       ` : `
       <header class="daily-course-header">
-        <h1>${isVi ? "Chọn chủ đề giao tiếp" : "选择交流主题"}</h1>
+        <h1>${isVi ? "Tiếng Trung Thông Dụng" : "普通中文"}</h1>
         <p>${isVi
       ? "Khám phá các tình huống giao tiếp thực tế và nâng cao khả năng phản xạ tiếng Trung của bạn qua từng chủ đề cụ thể."
       : "探索真实交流场景，通过具体主题提升你的中文反应能力。"}</p>
@@ -5211,7 +5443,6 @@ function formatPracticeDuration(startedAt, completedAt = Date.now()) {
 }
 
 function startPractice(options = {}) {
-  if (!requireLoginForPractice()) return;
   if (options.lessonId && !canAccessHskLesson(options.lessonId)) {
     promptUpgradeLocked();
     return;
@@ -5638,6 +5869,11 @@ function bindEvents() {
       state.vocabSearchQuery = event.target.value.trim();
       navigatePrimaryTab("vocab");
     }
+    const homeModuleCard = event.target?.closest?.(".home-desktop-module-card[data-home-module]");
+    if (homeModuleCard && (event.key === "Enter" || event.key === " ")) {
+      event.preventDefault();
+      navigatePrimaryTab(homeModuleCard.dataset.homeModule);
+    }
   });
   document.addEventListener("click", (event) => {
     if (event.target.closest?.("[data-hsk-level-back]")) {
@@ -5746,14 +5982,6 @@ function bindEvents() {
       return;
     }
 
-    const accountEditToggleBtn = event.target.closest("#accountEditToggleBtn");
-    if (accountEditToggleBtn && state.screen === "account") {
-      const accountFormActions = document.querySelector(".account-form-actions");
-      accountFormActions?.classList.remove("is-hidden");
-      accountFormActions?.removeAttribute("hidden");
-      return;
-    }
-
     const cancelAccountPanel = event.target.closest("#cancelAccountPanel");
     if (cancelAccountPanel && state.screen === "account") {
       renderAccount();
@@ -5767,11 +5995,15 @@ function bindEvents() {
     }
 
     const accountMobileGlobeBtn = event.target.closest("#accountMobileGlobeBtn");
-    if (accountMobileGlobeBtn && state.screen === "account") {
+    const accountMobileLanguageBtn = event.target.closest("#accountMobileLanguageBtn");
+    const homeDesktopLanguageBtn = event.target.closest("#homeDesktopLanguageBtn");
+    const homeDesktopTopbarLanguageBtn = event.target.closest("#homeDesktopTopbarLanguageBtn");
+    if (((accountMobileGlobeBtn || accountMobileLanguageBtn) && state.screen === "account") || homeDesktopLanguageBtn || homeDesktopTopbarLanguageBtn) {
       state.lang = state.lang === "vi" ? "zh" : "vi";
       localStorage.setItem("v2-lang", state.lang);
+      saveState();
       renderChrome();
-      renderAccount();
+      renderAll();
       return;
     }
 
@@ -5925,6 +6157,29 @@ function bindEvents() {
       return;
     }
 
+    const adminCreateAccountBtn = event.target.closest("#adminCreateAccountBtn");
+    if (adminCreateAccountBtn && state.screen === "admin") {
+      showAdminCreateAccountModal();
+      return;
+    }
+
+    const adminUserPageBtn = event.target.closest("[data-admin-user-page]");
+    if (adminUserPageBtn && state.screen === "admin") {
+      state.adminUserPage = Math.max(1, Number(adminUserPageBtn.dataset.adminUserPage || 1));
+      updateAdminUsersList();
+      return;
+    }
+
+    const adminLanguageBtn = event.target.closest("#adminLanguageBtn") || event.target.closest("#adminLanguageInlineBtn");
+    if (adminLanguageBtn && state.screen === "admin") {
+      state.lang = state.lang === "vi" ? "zh" : "vi";
+      localStorage.setItem("v2-lang", state.lang);
+      saveState();
+      renderChrome();
+      renderAdmin();
+      return;
+    }
+
     const adminUsersTabBtn = event.target.closest("#adminUsersTabBtn");
     if (adminUsersTabBtn) {
       state.adminTab = "users";
@@ -6045,7 +6300,7 @@ function bindEvents() {
         const freeItemLimit = parseAdminFreeItemLimit(dailyLimitInput ? dailyLimitInput.value : dailyConfig.freeItemLimit);
         return {
           ...theme,
-          lockedForFree: dailyConfig.lockedForFree === true,
+          lockedForFree: freeItemLimit > 0 ? false : dailyConfig.lockedForFree === true,
           freeItemLimit,
         };
       });
@@ -6090,11 +6345,11 @@ function bindEvents() {
         level,
         coverUrl: String(state.adminHskLevelCovers[level] || "").trim(),
       }));
-      const tooLarge = covers.find((item) => item.coverUrl.startsWith("data:") && item.coverUrl.length > MAX_HSK_LEVEL_COVER_BYTES);
+      const tooLarge = covers.find((item) => item.coverUrl.startsWith("data:") && item.coverUrl.length > MAX_HSK_LEVEL_COVER_DATA_URL_CHARS);
       if (tooLarge) {
         state.adminContentStatus = isVi
-          ? `Ảnh ${tooLarge.level} quá lớn. Hãy dùng file nhỏ hơn hoặc đặt ảnh vào thư mục assets.`
-          : `${tooLarge.level} 的图片太大，请压缩或使用 assets 路径。`;
+          ? `Ảnh ${tooLarge.level} quá lớn. Giới hạn tối đa khoảng ${MAX_HSK_LEVEL_COVER_MB}MB.`
+          : `${tooLarge.level} 的图片太大，最大约 ${MAX_HSK_LEVEL_COVER_MB}MB。`;
         renderAdmin();
         return;
       }
@@ -6152,21 +6407,7 @@ function bindEvents() {
     const adminDeleteUser = event.target.closest(".admin-delete-user");
     if (adminDeleteUser) {
       const row = adminDeleteUser.closest("[data-user-id]");
-      const email = row.querySelector('[data-field="email"]').value.trim();
-      if (!confirm(state.lang === "vi" ? `Xóa tài khoản ${email}?` : `删除帐户 ${email}?`)) return;
-      state.adminStatus = state.lang === "vi" ? "Đang xóa người dùng..." : "正在删除用户...";
-      renderAdmin();
-      apiRequest(`/api/admin/users/${encodeURIComponent(row.dataset.userId)}`, {
-        method: "DELETE",
-        headers: {
-          "X-Admin-User-Id": state.user?.id || "",
-        },
-      })
-        .then(() => loadAdminUsers())
-        .catch((error) => {
-          state.adminStatus = error.message;
-          renderAdmin();
-        });
+      showAdminDeleteUserConfirm(row);
       return;
     }
 
@@ -6305,7 +6546,6 @@ function bindEvents() {
     }
     const hskContentTypeBtn = event.target.closest("[data-hsk-content-type]");
     if (hskContentTypeBtn) {
-      if (!requireLoginForPractice()) return;
       if (state.hskPendingLessonId) {
         state.hskContentType = hskContentTypeBtn.dataset.hskContentType;
         startPractice({
@@ -6458,7 +6698,6 @@ function bindEvents() {
 
     const dailyContentTypeBtn = event.target.closest("[data-daily-content-type]");
     if (dailyContentTypeBtn) {
-      if (!requireLoginForPractice()) return;
       if (state.dailyPendingThemeId) {
         state.dailyContentType = dailyContentTypeBtn.dataset.dailyContentType;
         startPractice({
@@ -6606,6 +6845,7 @@ function bindEvents() {
     }
     if (event.target.id === "adminUserSearchInput") {
       state.adminUserSearch = event.target.value;
+      state.adminUserPage = 1;
       updateAdminUsersList();
     }
     if (event.target.matches?.("[data-admin-content-limit]")) {
@@ -6648,7 +6888,7 @@ function bindEvents() {
         return;
       }
       if (file.size > MAX_HSK_LEVEL_COVER_BYTES) {
-        showToast(state.lang === "vi" ? "Ảnh quá lớn (tối đa ~900KB)." : "图片太大（最大约 900KB）。");
+        showToast(state.lang === "vi" ? `Ảnh quá lớn (tối đa ~${MAX_HSK_LEVEL_COVER_MB}MB).` : `图片太大（最大约 ${MAX_HSK_LEVEL_COVER_MB}MB）。`);
         event.target.value = "";
         return;
       }
@@ -6663,10 +6903,12 @@ function bindEvents() {
     }
     if (event.target.id === "adminUserLevelFilter") {
       state.adminUserLevelFilter = event.target.value;
+      state.adminUserPage = 1;
       updateAdminUsersList();
     }
     if (event.target.id === "adminUserPlanFilter") {
       state.adminUserPlanFilter = event.target.value;
+      state.adminUserPage = 1;
       updateAdminUsersList();
     }
   });

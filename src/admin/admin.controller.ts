@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Delete, Body, Param, Headers } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Headers } from '@nestjs/common';
 import { AdminService } from './admin.service';
 
 @Controller('api/admin/users')
@@ -10,6 +10,14 @@ export class AdminController {
     @Headers() headers: Record<string, string>
   ) {
     return this.adminService.getAllUsers(headers);
+  }
+
+  @Post()
+  async createUser(
+    @Body() body: any,
+    @Headers() headers: Record<string, string>
+  ) {
+    return this.adminService.createUser(body, headers);
   }
 
   @Patch(':id')
