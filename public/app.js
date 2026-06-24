@@ -2242,11 +2242,17 @@ function isAdminUser() {
 }
 
 function scrollAppToTop() {
-  requestAnimationFrame(() => {
+  const scrollNow = () => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     document.documentElement.scrollTop = 0;
     document.body.scrollTop = 0;
-  });
+    document.getElementById("app")?.scrollTo?.({ top: 0, left: 0, behavior: "auto" });
+    document.querySelector(".app-shell:not(.hidden)")?.scrollTo?.({ top: 0, left: 0, behavior: "auto" });
+    document.querySelector(".screen:not(.hidden)")?.scrollTo?.({ top: 0, left: 0, behavior: "auto" });
+  };
+  scrollNow();
+  requestAnimationFrame(scrollNow);
+  setTimeout(scrollNow, 80);
 }
 
 function logoutCurrentUser() {
@@ -2370,6 +2376,7 @@ function setScreen(name) {
     bottomAccount.classList.toggle("active", name === "account");
     bottomAccount.classList.toggle("hidden", BACKEND_DISABLED);
   }
+  scrollAppToTop();
 }
 
 function renderChrome() {
@@ -2936,7 +2943,7 @@ function showModal(type) {
         ` : ""}
         <div class="form-group">
           <label for="authEmail">Email</label>
-          <input type="email" id="authEmail" placeholder="" required />
+          <input type="email" id="authEmail" placeholder="huamei@gmail.com" required />
         </div>
         <div class="form-group">
           <label for="authPassword">${isVi ? "Mật khẩu" : "密码"}</label>
@@ -3179,7 +3186,7 @@ function renderAccount() {
           <p>${isVi ? "Học viên tích cực" : "积极学员"}</p>
           <div class="account-badges">
             <span>${escapeAttr(currentLevel.replace(/^HSK/i, "HSK "))}</span>
-            <span class="account-badge-pro">${hasPremium ? (isVi ? "Thành viên Pro" : "Pro 会员") : (isVi ? "Gói Free" : "Free 套餐")}</span>
+            <span class="account-badge-pro">${hasPremium ? (isVi ? "Pro" : "Pro") : (isVi ? "Gói Free" : "Free 套餐")}</span>
           </div>
           <div class="account-streak">
             <div>
@@ -3279,6 +3286,9 @@ function renderAccount() {
           <svg class="account-password-chevron" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M9 6l6 6-6 6"/>
           </svg>
+        </button>
+        <button type="button" class="account-mobile-logout-btn" id="accountMobileLogoutBtn">
+          ${t("logout")}
         </button>
 
       </div>
@@ -3801,6 +3811,19 @@ function renderGlobalFooter() {
 
 function getHomeDashboardStats() {
   const totalLessons = Object.values(hskLevels).flat().length + dailyThemes.length;
+  if (!state.user) {
+    return {
+      totalLessons,
+      completedLessons: 0,
+      percent: 0,
+      xp: 0,
+      studyMinutes: 0,
+      practicedChars: 0,
+      streakDays: 0,
+      level: 0,
+      topPercent: 0,
+    };
+  }
   const completedLessons = state.completed.size;
   const percent = totalLessons > 0 ? Math.min(100, Math.round((completedLessons / totalLessons) * 100)) : 0;
   const xp = completedLessons * 20 + state.saved.size * 5;
@@ -3971,6 +3994,7 @@ function renderAppDesktopSidebarHTML(activeNavOverride = "") {
 
 function renderMobilePageReturnBar(activeNav = "") {
   if (!activeNav || activeNav === "home") return "";
+  if (activeNav === "account") return "";
   if (activeNav === "hsk" && !state.hskLevelPicker) return "";
   const labels = {
     hsk: state.lang === "vi" ? "Khóa HSK" : "HSK 课程",
@@ -4005,6 +4029,7 @@ function setScreenWithDesktopShell(screenKey, innerHTML, shellClass = "", active
   const node = screens[screenKey];
   if (!node) return;
   node.innerHTML = wrapWithAppDesktopShell(innerHTML, shellClass, activeNav);
+  scrollAppToTop();
 }
 
 function renderHomeDesktopLayoutHTML(isVi) {
@@ -4016,12 +4041,28 @@ function renderHomeDesktopLayoutHTML(isVi) {
   const avatarHTML = avatarUrl
     ? `<img src="${escapeAttr(avatarUrl)}" alt="${escapeAttr(userName)}" />`
     : escapeHtml(userInitial);
-  const accountTypeLabel = state.user?.role === "admin" ? "Admin" : hasPremiumAccess() ? "Premium" : "Free";
+  const accountTypeLabel = state.user?.role === "admin" ? "Admin" : hasPremiumAccess() ? "Pro" : "Free";
   const studyHours = Math.floor(stats.studyMinutes / 60);
   const studyMins = stats.studyMinutes % 60;
   const studyLabel = studyHours > 0
     ? `${studyHours}h ${studyMins}m`
     : `${studyMins}m`;
+  const desktopProfileCardHTML = state.user
+    ? `
+        <div class="home-desktop-profile-card">
+          <div class="home-desktop-avatar">${avatarHTML}</div>
+          <div>
+            <p>${isVi ? "Xin chÃ o!" : "ä½ å¥½ï¼"}</p>
+            <strong>${escapeHtml(desktopProfileName)}</strong>
+          </div>
+          <span class="home-desktop-level-badge">${escapeHtml(accountTypeLabel)}</span>
+        </div>
+      `
+    : `
+        <div class="home-desktop-profile-card home-desktop-profile-card--login home-desktop-profile-card--guest" data-home-login>
+          <strong>${escapeHtml(desktopProfileName)}</strong>
+        </div>
+      `;
 
   return `
     <div class="home-desktop-layout">
@@ -4038,7 +4079,7 @@ function renderHomeDesktopLayoutHTML(isVi) {
 
         <section class="home-desktop-saved-section">
           <div class="home-desktop-section-head">
-            <h2>★ ${isVi ? "Từ vựng đã lưu" : "收藏生词"}</h2>
+            <h2><span class="saved-heading-star">★</span> ${isVi ? "Từ vựng đã lưu" : "收藏生词"}</h2>
             <button type="button" class="home-desktop-link-btn" data-home-module="vocab">${isVi ? "Xem tất cả" : "查看全部"} ›</button>
           </div>
           ${renderHomeDesktopSavedVocabHTML(isVi)}
@@ -4091,12 +4132,15 @@ function renderHomeDesktopLayoutHTML(isVi) {
 
 function renderHomeMobileTopbarHTML(isVi) {
   const stats = getHomeDashboardStats();
-  const userName = state.user?.fullName || (isVi ? "Học viên" : "学员");
+  const isGuest = !state.user;
+  const userName = state.user?.fullName || (isVi ? "Chưa đăng nhập" : "未登录");
   const userInitial = String(userName).charAt(0).toUpperCase();
   const avatarUrl = getAccountAvatarUrl();
   const avatarHTML = avatarUrl
     ? `<img src="${escapeAttr(avatarUrl)}" alt="${escapeAttr(userName)}" />`
-    : escapeHtml(userInitial);
+    : isGuest
+      ? `<img src="assets/default-guest-avatar.png" alt="${escapeAttr(userName)}" />`
+      : escapeHtml(userInitial);
   const streakLabel = isVi ? "Học liên tục" : "连续学习";
   const dayUnit = isVi ? "ngày" : "天";
   const cheer = isVi ? "Tuyệt vời!" : "太棒了！";
@@ -4123,18 +4167,18 @@ function renderHomeMobileTopbarHTML(isVi) {
         <p>${isVi ? "Viết đúng nét – Nhớ lâu chữ" : "写对笔画 · 记得更牢"}</p>
       </div>
 
-      <div class="home-mobile-topbar-profile">
-        <div class="home-mobile-topbar-avatar">${avatarHTML}</div>
-        <p class="home-mobile-topbar-greet">${escapeHtml(userName)}</p>
-        <span class="home-mobile-topbar-level">
+      <div class="home-mobile-topbar-profile${isGuest ? " home-mobile-topbar-profile--guest" : ""}" ${isGuest ? "data-home-login" : ""}>
+        <div class="home-mobile-topbar-avatar${isGuest ? " home-mobile-topbar-avatar--guest" : ""}">${avatarHTML}</div>
+        ${isGuest ? "" : `<p class="home-mobile-topbar-greet">${escapeHtml(userName)}</p>`}
+        ${isGuest ? "" : `<span class="home-mobile-topbar-level">
           ${isVi ? "Học viên" : "学员"}
           <span class="home-mobile-topbar-level-badge">
             <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" aria-hidden="true">
               <path d="M12 2l2.2 4.8 5.3.7-3.8 3.7.9 5.3-4.6-2.5-4.6 2.5.9-5.3L4.5 7.5l5.3-.7L12 2z"/>
             </svg>
-            ${escapeHtml(state.user?.role === "admin" ? "Admin" : hasPremiumAccess() ? "Premium" : "Free")}
+            ${escapeHtml(state.user?.role === "admin" ? "Admin" : hasPremiumAccess() ? "Pro" : "Free")}
           </span>
-        </span>
+        </span>`}
       </div>
     </header>
   `;
@@ -4211,7 +4255,7 @@ function renderHomeMobileSavedVocabHTML(isVi) {
   return `
     <section class="home-mobile-saved-section" aria-label="${isVi ? "Từ vựng đã lưu" : "收藏生词"}">
       <div class="home-mobile-saved-head">
-        <h2>★ ${isVi ? "Từ vựng đã lưu" : "收藏生词"}</h2>
+        <h2><span class="saved-heading-star">★</span> ${isVi ? "Từ vựng đã lưu" : "收藏生词"}</h2>
         <button type="button" class="home-mobile-saved-link" data-home-module="vocab">
           ${isVi ? "Xem tất cả" : "查看全部"} <span aria-hidden="true">›</span>
         </button>
@@ -4306,6 +4350,21 @@ function renderHome() {
 function renderCourse() {
   if (state.module === "hsk") renderHskCourse();
   else renderDailyCourse();
+}
+
+function backToHskLevelPicker() {
+  state.module = "hsk";
+  state.hskLevelPicker = true;
+  state.hskPendingLessonId = "";
+  state.hskContentType = "";
+  renderHskCourse();
+}
+
+function backToDailyThemeList() {
+  state.module = "daily";
+  state.dailyPendingThemeId = "";
+  state.dailyContentType = "";
+  renderDailyCourse();
 }
 
 function renderHskLessonListHTML() {
@@ -5559,6 +5618,18 @@ function bindEvents() {
       navigatePrimaryTab("vocab");
     }
   });
+  document.addEventListener("click", (event) => {
+    if (event.target.closest?.("[data-hsk-level-back]")) {
+      event.preventDefault();
+      event.stopPropagation();
+      backToHskLevelPicker();
+    }
+    if (event.target.closest?.("[data-daily-back-themes]")) {
+      event.preventDefault();
+      event.stopPropagation();
+      backToDailyThemeList();
+    }
+  }, true);
   const menuToggleBtn = $("#menuToggleBtn");
   const mobileMenu = $("#mobileMenu");
   if (menuToggleBtn && mobileMenu) {
@@ -5692,6 +5763,11 @@ function bindEvents() {
     const accountChangePasswordBtn = event.target.closest("#accountChangePasswordBtn");
     if (accountChangePasswordBtn) {
       showToast(state.lang === "vi" ? "Tính năng đổi mật khẩu đang được phát triển" : "修改密码功能开发中");
+      return;
+    }
+
+    if (event.target.closest("#accountMobileLogoutBtn")) {
+      logoutCurrentUser();
       return;
     }
 
@@ -6196,10 +6272,7 @@ function bindEvents() {
     }
     const hskLevelBackBtn = event.target.closest("[data-hsk-level-back]");
     if (hskLevelBackBtn) {
-      state.hskLevelPicker = true;
-      state.hskPendingLessonId = "";
-      state.hskContentType = "";
-      renderHskCourse();
+      backToHskLevelPicker();
       return;
     }
     const hskBackLessonsBtn = event.target.closest("[data-hsk-back-lessons]");
@@ -6358,9 +6431,7 @@ function bindEvents() {
 
     const dailyBackThemesBtn = event.target.closest("[data-daily-back-themes]");
     if (dailyBackThemesBtn) {
-      state.dailyPendingThemeId = "";
-      state.dailyContentType = "";
-      renderDailyCourse();
+      backToDailyThemeList();
       return;
     }
 

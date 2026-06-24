@@ -24,6 +24,13 @@ export interface DailyThemeLockRow {
 export class ContentService {
   constructor(private readonly db: DatabaseService) {}
 
+  private async ensureDailyThemeLocksSchema() {
+    await this.db.query(`
+      ALTER TABLE daily_theme_locks
+      ADD COLUMN IF NOT EXISTS free_item_limit INTEGER NOT NULL DEFAULT 0;
+    `);
+  }
+
   async listLocks(): Promise<HskLessonLockRow[]> {
     const result = await this.db.query(
       `SELECT lesson_id, level, lesson_no, title_vi, free_item_limit, locked_for_free, updated_at
@@ -105,6 +112,7 @@ export class ContentService {
   }
 
   async listDailyLocks(): Promise<DailyThemeLockRow[]> {
+    await this.ensureDailyThemeLocksSchema();
     const result = await this.db.query(
       `SELECT theme_id, title_vi, sort_order, free_item_limit, locked_for_free, updated_at
        FROM daily_theme_locks
@@ -121,6 +129,7 @@ export class ContentService {
   }
 
   async listPublicDailyLocks(): Promise<Array<{ themeId: string; freeItemLimit: number; lockedForFree: boolean }>> {
+    await this.ensureDailyThemeLocksSchema();
     const result = await this.db.query(
       `SELECT theme_id, free_item_limit, locked_for_free
        FROM daily_theme_locks
@@ -135,6 +144,7 @@ export class ContentService {
   }
 
   async listLockedDailyThemeIds(): Promise<string[]> {
+    await this.ensureDailyThemeLocksSchema();
     const result = await this.db.query(
       `SELECT theme_id FROM daily_theme_locks WHERE locked_for_free = TRUE`,
     );
@@ -152,6 +162,7 @@ export class ContentService {
       throw new HttpException('Danh sách chủ đề không hợp lệ.', HttpStatus.BAD_REQUEST);
     }
 
+    await this.ensureDailyThemeLocksSchema();
     const client = await this.db.getPool()!.connect();
     try {
       await client.query('BEGIN');

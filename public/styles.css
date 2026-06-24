@@ -1487,7 +1487,8 @@ text-align: center;
   justify-content: center;
   cursor: pointer;
   position: relative;
-  z-index: 2;
+  z-index: 20;
+  pointer-events: auto;
   transition: transform 0.18s ease, background 0.18s ease;
 }
 
@@ -2644,6 +2645,8 @@ text-align: center;
 }
 
 .hsk-back-to-lessons-btn {
+  position: relative;
+  z-index: 20;
   border: 1px solid #e2e8f0;
   border-radius: 999px;
   background: #ffffff;
@@ -2652,6 +2655,7 @@ text-align: center;
   font-size: 13px;
   font-weight: 800;
   cursor: pointer;
+  pointer-events: auto;
   transition: all 0.2s;
 }
 
@@ -3669,7 +3673,8 @@ text-align: center;
   position: absolute;
   top: 0;
   right: clamp(20px, 4vw, 40px);
-  z-index: 4;
+  z-index: 20;
+  pointer-events: auto;
 }
 
 .daily-study-part-section {
@@ -8535,6 +8540,10 @@ p {
   display: none;
 }
 
+.account-mobile-logout-btn {
+  display: none;
+}
+
 .account-avatar-edit {
   position: absolute;
   right: -4px;
@@ -8637,17 +8646,23 @@ p {
     grid-template-columns: 40px 1fr auto;
     align-items: center;
     gap: 10px;
-    padding: 14px 16px 12px;
-    background: #eef2f8;
+    min-height: 64px;
+    padding: 8px 16px;
+    background:
+      radial-gradient(circle at 86% 50%, rgba(255, 255, 255, 0.16) 0 4px, transparent 5px),
+      repeating-radial-gradient(circle at 96% 50%, rgba(255, 255, 255, 0.16) 0 3px, transparent 4px 16px),
+      repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.1) 0 4px, transparent 4px 18px),
+      linear-gradient(135deg, #047857 0%, #10b981 58%, #065f46 100%);
     position: sticky;
     top: 0;
     z-index: 20;
+    overflow: hidden;
   }
 
   .account-mobile-header h1 {
     margin: 0;
     text-align: center;
-    color: #047857;
+    color: #ffffff;
     font-family: var(--font-display);
     font-size: 18px;
     font-weight: 900;
@@ -8655,12 +8670,12 @@ p {
   }
 
   .account-mobile-globe {
-    width: 40px;
-    height: 40px;
-    border: 0;
+    width: 34px;
+    height: 34px;
+    border: 2px solid rgba(255, 255, 255, 0.9);
     border-radius: 50%;
-    background: transparent;
-    color: #047857;
+    background: rgba(0, 0, 0, 0.08);
+    color: #ffffff;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -8672,8 +8687,8 @@ p {
     min-height: 36px;
     border: 0;
     border-radius: 999px;
-    background: #047857;
-    color: #fff;
+    background: #ffffff;
+    color: #047857;
     padding: 0 18px;
     font-size: 14px;
     font-weight: 800;
@@ -8825,6 +8840,22 @@ p {
   .account-password-chevron {
     color: #94a3b8;
     flex-shrink: 0;
+  }
+
+  .account-mobile-logout-btn {
+    width: 100%;
+    min-height: 52px;
+    border: 0;
+    border-radius: 16px;
+    background: #fff1f2;
+    color: #dc2626;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 18px;
+    font-size: 15px;
+    font-weight: 900;
+    cursor: pointer;
   }
 }
 
@@ -10734,6 +10765,19 @@ p {
 
   .home-desktop-profile-card--login {
     cursor: pointer;
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .home-desktop-profile-card--login .home-desktop-avatar,
+  .home-desktop-profile-card--login p,
+  .home-desktop-profile-card--login .home-desktop-level-badge {
+    display: none;
+  }
+
+  .home-desktop-profile-card--login strong {
+    margin: 0;
   }
 
   .home-desktop-avatar {
@@ -11003,6 +11047,10 @@ p {
     min-width: 0;
   }
 
+  .home-mobile-topbar-profile--guest {
+    cursor: pointer;
+  }
+
   .home-mobile-topbar-avatar {
     width: 46px;
     height: 46px;
@@ -11024,6 +11072,14 @@ p {
     height: 100%;
     object-fit: cover;
     display: block;
+  }
+
+  .home-mobile-topbar-avatar--guest {
+    position: relative;
+    background: #e5e7eb;
+    border: 1px solid #9ca3af;
+    color: transparent;
+    box-shadow: none;
   }
 
   .home-mobile-topbar-greet {
@@ -13247,6 +13303,10 @@ p {
 }
 
 /* Saved vocabulary redesign */
+.saved-heading-star {
+  color: #f5b700;
+}
+
 .screen-vocab {
   background: #fbfdff;
 }
