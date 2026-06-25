@@ -1,6 +1,15 @@
 /* Mobile-only overrides. Keep desktop/base styles in styles.css. */
 
 @media (max-width: 640px) {
+  .mobile-page-return-bar,
+  .hsk-lesson-hero,
+  .daily-course-header,
+  .vocab-page-heading,
+  .account-mobile-header {
+    background: #16a34a !important;
+    color: #ffffff;
+  }
+
   .app-desktop-content:has(> .mobile-page-return-bar) {
     padding-top: 48px !important;
   }
@@ -60,6 +69,98 @@
     border-radius: 0;
   }
 
+  .vocab-page-heading {
+    display: none !important;
+  }
+
+  .hsk-lesson-hero {
+    min-height: 48px !important;
+    height: 48px;
+    padding: 8px 16px !important;
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr) 34px !important;
+    align-items: center;
+    background: #16a34a !important;
+    border: 0;
+    box-shadow: none;
+    color: #ffffff;
+  }
+
+  .hsk-lesson-hero::before {
+    background: none;
+    opacity: 1;
+  }
+
+  .hsk-lesson-hero::after,
+  .hsk-lesson-hero-art {
+    display: none !important;
+  }
+
+  .hsk-lesson-hero .hsk-lesson-back-btn {
+    position: absolute !important;
+    left: 16px !important;
+    top: 50% !important;
+    width: 28px;
+    height: 28px;
+    min-height: 28px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.9);
+    background: rgba(0, 0, 0, 0.08);
+    color: #ffffff;
+    transform: translateY(-50%) !important;
+    z-index: 3;
+  }
+
+  .hsk-lesson-hero .hsk-lesson-back-btn:hover {
+    transform: translateY(-50%) !important;
+  }
+
+  .hsk-lesson-hero .hsk-lesson-back-btn svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .hsk-lesson-hero h1 {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 58px;
+    color: #ffffff;
+    font-size: 0 !important;
+    line-height: 1;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .hsk-lesson-hero h1::before {
+    content: attr(data-mobile-title);
+    color: #ffffff;
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  .vocab-page-heading h1,
+  .vocab-page-heading p,
+  .account-mobile-header h1,
+  .vocab-page-heading h1,
+  .vocab-page-heading p {
+    color: #ffffff !important;
+  }
+
+  .daily-course-layout > .daily-course-hero {
+    display: none;
+  }
+
   .hsk-lesson-screen,
   .daily-course-layout,
   .vocab-layout,
@@ -69,16 +170,18 @@
 
   body:has(#practiceScreen:not(.hidden)) {
     background: #f1fbf7;
+    overflow: auto;
   }
 
   #practiceScreen:not(.hidden) {
-    --practice-dock-height: clamp(114px, 32vw, 142px);
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto;
     gap: 6px;
-    height: 100dvh;
-    padding: 4px 5px calc(var(--practice-dock-height) + max(8px, env(safe-area-inset-bottom)));
+    height: auto;
+    min-height: 100dvh;
+    padding: 4px 5px calc(8px + env(safe-area-inset-bottom));
     background: #f1fbf7;
-    overflow: hidden;
+    overflow-y: auto;
+    align-content: start;
   }
 
   #practiceScreen .practice-top,
@@ -157,16 +260,16 @@
     grid-row: 3;
     display: grid;
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
     gap: 6px;
-    height: 100%;
+    height: auto;
     min-height: 0;
-    overflow: hidden;
+    overflow: visible;
   }
 
   #practiceScreen .exercise-card {
-    min-height: 0;
-    height: 100%;
+    min-height: clamp(300px, 50dvh, 430px);
+    height: auto;
     justify-content: start;
     border: 1px solid rgba(203, 213, 225, 0.9);
     border-radius: 9px;
@@ -245,14 +348,14 @@
 
   #practiceScreen .memory-panel {
     display: block;
-    min-height: clamp(78px, 22vw, 108px);
+    min-height: clamp(118px, 28vw, 152px);
     height: auto;
     border: 1px solid rgba(203, 213, 225, 0.9);
     border-radius: 8px;
     padding: 8px 10px;
     background: #ffffff;
     box-shadow: 0 5px 14px rgba(15, 23, 42, 0.05);
-    overflow: hidden;
+    overflow: visible;
   }
 
   #practiceScreen .memory-panel::before {
@@ -294,21 +397,16 @@
   }
 
   #practiceScreen .function-dock {
-    position: fixed;
-    left: 50%;
-    right: auto;
-    bottom: max(4px, env(safe-area-inset-bottom));
-    z-index: 80;
-    width: min(calc(100vw - 10px), 390px);
+    width: 100%;
+    max-width: 390px;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 5px;
-    margin: 0;
+    margin: 0 auto;
     padding: 6px;
     border-radius: 8px;
     background: rgba(255, 255, 255, 0.94);
-    box-shadow: 0 -8px 18px rgba(15, 23, 42, 0.08);
-    transform: translateX(-50%);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
   }
 
   #practiceScreen .function-dock button,

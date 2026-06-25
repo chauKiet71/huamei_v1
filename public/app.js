@@ -70,7 +70,7 @@ const i18n = {
     lang: "VI",
     dashboard: "今日学习面板",
     todayGoal: "今日学习目标",
-    goalText: "完成 1 个 lesson 或 1 个主题。",
+    goalText: "完成 1 节课或 1 个主题。",
     saved: "生词收藏",
     wrong: "错题",
     streak: "连续学习",
@@ -107,7 +107,7 @@ const i18n = {
     continuePrompt: "按 Enter / 空格继续",
     bad: "还不对，听一下再试。",
     done: "完成！",
-    completeTitle: "Lesson 完成",
+    completeTitle: "课程完成",
     completeSub: "今日目标已完成。",
     backHome: "返回首页",
     nextLesson: "下一课",
@@ -124,7 +124,7 @@ const i18n = {
     vocab: "生词本",
     subscriptions: "订阅套餐",
     homeTab: "首页",
-    dailyTabNav: "常见的",
+    dailyTabNav: "常用",
   },
 };
 
@@ -1201,7 +1201,9 @@ let preferredChineseVoice = null;
 
 function currentCollection() {
   if (state.module === "vocab") {
-    const items = [...state.saved].map(hanzi => findItemByHanzi(hanzi));
+    const items = [...state.saved]
+      .map(hanzi => normalizeVocabPracticeItem(findItemByHanzi(hanzi), hanzi))
+      .filter(item => item.hanzi && item.words.length > 0);
     return {
       id: "vocab",
       no: "",
@@ -1399,7 +1401,12 @@ function escapeHtml(value) {
 }
 
 const BACKEND_DISABLED = false;
-const BACKEND_DISABLED_MESSAGE = "Bản Netlify hiện chỉ chạy nội dung học tĩnh, chưa bật đăng nhập.";
+
+function backendDisabledMessage() {
+  return state.lang === "vi"
+    ? "Bản Netlify hiện chỉ chạy nội dung học tĩnh, chưa bật đăng nhập."
+    : "Netlify 版本目前仅运行静态学习内容，尚未启用登录。";
+}
 
 function formatPlanPrice(amount) {
   return `${Number(amount || 0).toLocaleString("vi-VN")}đ`;
@@ -1479,7 +1486,7 @@ async function loadPaymentPlans() {
 
 async function apiRequest(path, options = {}) {
   if (BACKEND_DISABLED && path.startsWith("/api/")) {
-    throw new Error(BACKEND_DISABLED_MESSAGE);
+    throw new Error(backendDisabledMessage());
   }
 
   const response = await fetch(path, {
@@ -2275,16 +2282,16 @@ function formatActivityTime(value) {
 
 function getActivityView(activity, isVi) {
   const labels = {
-    profile: [isVi ? "Cập nhật hồ sơ" : "Profile updated", isVi ? "Đã thay đổi thông tin cá nhân" : "Personal information changed", "green"],
-    avatar: [isVi ? "Cập nhật ảnh đại diện" : "Avatar updated", isVi ? "Đã thay đổi ảnh hồ sơ" : "Profile photo changed", "green"],
-    password: [isVi ? "Đổi mật khẩu" : "Password changed", isVi ? "Tài khoản được bảo mật hơn" : "Account security improved", "green"],
-    reminder_on: [isVi ? "Bật nhắc học" : "Reminder enabled", isVi ? "Nhận email nhắc học lúc 7h sáng" : "Daily 7 AM email reminder enabled", "yellow"],
-    reminder_off: [isVi ? "Tắt nhắc học" : "Reminder disabled", isVi ? "Đã tắt email nhắc học hằng ngày" : "Daily reminder email disabled", "yellow"],
-    email_verified: [isVi ? "Xác minh email" : "Email verified", isVi ? "Email tài khoản đã được xác minh" : "Account email has been verified", "green"],
-    save_vocab: [isVi ? "Lưu từ mới" : "Saved new word", activity.hanzi ? `${activity.hanzi} ${activity.meaning || ""}`.trim() : (isVi ? "Đã lưu từ vựng" : "Vocabulary saved"), "purple"],
-    complete: [isVi ? "Hoàn thành bài học" : "Lesson completed", activity.title || (isVi ? "Đã hoàn thành một mục luyện tập" : "Completed a practice item"), "green"],
+    profile: [isVi ? "Cập nhật hồ sơ" : "更新资料", isVi ? "Đã thay đổi thông tin cá nhân" : "个人信息已更新", "green"],
+    avatar: [isVi ? "Cập nhật ảnh đại diện" : "更新头像", isVi ? "Đã thay đổi ảnh hồ sơ" : "头像已更换", "green"],
+    password: [isVi ? "Đổi mật khẩu" : "修改密码", isVi ? "Tài khoản được bảo mật hơn" : "账号安全性已提升", "green"],
+    reminder_on: [isVi ? "Bật nhắc học" : "开启学习提醒", isVi ? "Nhận email nhắc học lúc 7h sáng" : "每天早上 7 点接收学习提醒邮件", "yellow"],
+    reminder_off: [isVi ? "Tắt nhắc học" : "关闭学习提醒", isVi ? "Đã tắt email nhắc học hằng ngày" : "每日学习提醒邮件已关闭", "yellow"],
+    email_verified: [isVi ? "Xác minh email" : "邮箱验证", isVi ? "Email tài khoản đã được xác minh" : "账号邮箱已验证", "green"],
+    save_vocab: [isVi ? "Lưu từ mới" : "收藏生词", activity.hanzi ? `${activity.hanzi} ${activity.meaning || ""}`.trim() : (isVi ? "Đã lưu từ vựng" : "已收藏生词"), "purple"],
+    complete: [isVi ? "Hoàn thành bài học" : "完成课程", activity.title || (isVi ? "Đã hoàn thành một mục luyện tập" : "已完成一个练习项目"), "green"],
   };
-  const fallback = [isVi ? "Hoạt động mới" : "New activity", activity.title || "", "purple"];
+  const fallback = [isVi ? "Hoạt động mới" : "新活动", activity.title || "", "purple"];
   const [title, subtitle, tone] = labels[activity.type] || fallback;
   return { title, subtitle, tone };
 }
@@ -2309,7 +2316,7 @@ function renderRecentActivitiesHTML(isVi, updatedLabel, limit = 2) {
   }).join("") : `
     <li class="account-activity-empty">
       <span class="activity-dot activity-dot--green"></span>
-      <strong>${isVi ? "Chưa có hoạt động" : "No activity yet"}<small>${isVi ? "Hoạt động học tập sẽ hiển thị tại đây" : "Learning activity will appear here"}</small></strong>
+      <strong>${isVi ? "Chưa có hoạt động" : "暂无活动"}<small>${isVi ? "Hoạt động học tập sẽ hiển thị tại đây" : "学习活动会显示在这里"}</small></strong>
       <em>${escapeHtml(updatedLabel)}</em>
     </li>
   `;
@@ -2337,13 +2344,13 @@ function showRecentActivitiesDrawer() {
   drawer.id = "recentActivitiesDrawer";
   drawer.className = "recent-activities-drawer-overlay";
   drawer.innerHTML = `
-    <aside class="recent-activities-drawer" role="dialog" aria-modal="true" aria-label="${isVi ? "Tất cả hoạt động gần đây" : "All recent activities"}">
+    <aside class="recent-activities-drawer" role="dialog" aria-modal="true" aria-label="${isVi ? "Tất cả hoạt động gần đây" : "全部最近活动"}">
       <header class="recent-activities-drawer-header">
         <div>
-          <span>${isVi ? "Hồ sơ cá nhân" : "Profile"}</span>
-          <h2>${isVi ? "Hoạt động gần đây" : "Recent activity"}</h2>
+          <span>${isVi ? "Hồ sơ cá nhân" : "个人资料"}</span>
+          <h2>${isVi ? "Hoạt động gần đây" : "最近活动"}</h2>
         </div>
-        <button type="button" class="recent-activities-drawer-close" data-close-activities-drawer aria-label="${isVi ? "Đóng" : "Close"}">&times;</button>
+        <button type="button" class="recent-activities-drawer-close" data-close-activities-drawer aria-label="${isVi ? "Đóng" : "关闭"}">&times;</button>
       </header>
       <div class="recent-activities-drawer-body">
         ${renderRecentActivitiesHTML(isVi, updatedLabel, 30)}
@@ -2390,7 +2397,7 @@ function scrollAppToTop() {
 
 function logoutCurrentUser() {
   if (BACKEND_DISABLED) {
-    showToast(BACKEND_DISABLED_MESSAGE);
+    showToast(backendDisabledMessage());
     return false;
   }
   if (!state.user) return false;
@@ -2848,7 +2855,7 @@ function getAdminUserPlan(user) {
 function getAdminUserPlanLabel(plan, isVi = state.lang === "vi") {
   if (plan === "PREMIUM") return "Pro";
   if (plan === "EMPLOYEE") return isVi ? "Nhân viên" : "员工";
-  if (plan === "FREE") return isVi ? "Free" : "Free";
+  if (plan === "FREE") return isVi ? "Free" : "免费";
   return plan || "";
 }
 
@@ -2918,14 +2925,14 @@ function buildAdminUserRowsHTML(users, isVi) {
     const hasPremium = isActivePremiumUser(user);
     const plan = getAdminUserPlan(user);
     const displayDuration = hasPremium ? formatAdminDate(user.premiumUntil) : "N/A";
-    const duration = user.isPremium ? (isVi ? "Không giới hạn" : "不限") : index % 2 === 0 ? "90 ngày" : "N/A";
+    const duration = user.isPremium ? (isVi ? "Không giới hạn" : "不限") : index % 2 === 0 ? (isVi ? "90 ngày" : "90 天") : "N/A";
     return `
       <tr data-user-id="${escapeAttr(user.id)}">
         <td>
           <div class="admin-user-cell">
             ${avatar ? `<img src="${avatar}" alt="${escapeAttr(user.fullName || user.email)}" />` : `<span>${escapeAttr(initials)}</span>`}
             <div>
-              <strong>${escapeAttr(user.fullName || "No name")}</strong>
+              <strong>${escapeAttr(user.fullName || (isVi ? "Chưa có tên" : "暂无姓名"))}</strong>
               <small>ID: ${escapeAttr(String(user.id || "").slice(0, 8).toUpperCase())}</small>
             </div>
           </div>
@@ -3149,7 +3156,7 @@ function renderAdmin() {
 
 function showModal(type) {
   if (BACKEND_DISABLED) {
-    showToast(BACKEND_DISABLED_MESSAGE);
+    showToast(backendDisabledMessage());
     return;
   }
   const modalDiv = document.createElement("div");
@@ -3246,7 +3253,7 @@ function showModal(type) {
 
 function showEmailVerificationModal() {
   if (BACKEND_DISABLED) {
-    showToast(BACKEND_DISABLED_MESSAGE);
+    showToast(backendDisabledMessage());
     return;
   }
   if (!state.user?.id) {
@@ -3254,7 +3261,7 @@ function showEmailVerificationModal() {
     return;
   }
   if (state.user.emailVerified === true) {
-    showToast(state.lang === "vi" ? "Email đã được xác minh." : "Email is already verified.");
+    showToast(state.lang === "vi" ? "Email đã được xác minh." : "邮箱已验证。");
     return;
   }
   document.getElementById("authModal")?.remove();
@@ -3267,18 +3274,18 @@ function showEmailVerificationModal() {
     <div class="auth-modal-content auth-modal-content--email-verify">
       <button class="auth-modal-close" id="closeAuthModal" type="button">&times;</button>
       <div class="auth-modal-logo">验</div>
-      <h2>${isVi ? "Xác minh email" : "Email verification"}</h2>
-      <p class="auth-modal-sub">${isVi ? `Mã xác minh sẽ được gửi tới ${escapeHtml(email)}` : `A verification code will be sent to ${escapeHtml(email)}`}</p>
+      <h2>${isVi ? "Xác minh email" : "邮箱验证"}</h2>
+      <p class="auth-modal-sub">${isVi ? `Mã xác minh sẽ được gửi tới ${escapeHtml(email)}` : `验证码将发送至 ${escapeHtml(email)}`}</p>
 
       <form id="emailVerificationForm" onsubmit="event.preventDefault();">
         <div class="form-group">
-          <label for="emailVerificationCodeModalInput">${isVi ? "Mã xác minh" : "Verification code"}</label>
-          <input type="text" id="emailVerificationCodeModalInput" inputmode="numeric" maxlength="6" placeholder="${isVi ? "Nhập mã 6 số" : "Enter 6-digit code"}" value="${escapeAttr(state.emailVerificationCode)}" required />
+          <label for="emailVerificationCodeModalInput">${isVi ? "Mã xác minh" : "验证码"}</label>
+          <input type="text" id="emailVerificationCodeModalInput" inputmode="numeric" maxlength="6" placeholder="${isVi ? "Nhập mã 6 số" : "输入 6 位验证码"}" value="${escapeAttr(state.emailVerificationCode)}" required />
         </div>
         <p class="auth-form-message" id="emailVerificationMessage" role="status">${escapeHtml(state.emailVerificationStatus || "")}</p>
         <div class="email-verification-modal-actions">
-          <button type="button" class="btn-auth-secondary" id="emailVerificationSendBtn">${isVi ? "Gửi mã" : "Send code"}</button>
-          <button type="submit" class="btn-auth-submit" id="emailVerificationConfirmBtn">${isVi ? "Xác minh" : "Verify"}</button>
+          <button type="button" class="btn-auth-secondary" id="emailVerificationSendBtn">${isVi ? "Gửi mã" : "发送验证码"}</button>
+          <button type="submit" class="btn-auth-submit" id="emailVerificationConfirmBtn">${isVi ? "Xác minh" : "验证"}</button>
         </div>
       </form>
     </div>
@@ -3301,7 +3308,7 @@ function showEmailVerificationModal() {
 
   sendBtn.onclick = async () => {
     sendBtn.disabled = true;
-    message.textContent = isVi ? "Đang gửi mã xác minh..." : "Sending verification code...";
+    message.textContent = isVi ? "Đang gửi mã xác minh..." : "正在发送验证码...";
     message.className = "auth-form-message";
     try {
       const data = await apiRequest(`/api/users/${encodeURIComponent(state.user.id)}/email-verification/send`, {
@@ -3309,14 +3316,14 @@ function showEmailVerificationModal() {
         headers: { "X-User-Id": state.user.id },
       });
       state.emailVerificationStatus = data.alreadyVerified
-        ? (isVi ? "Email đã được xác minh." : "Email is already verified.")
+        ? (isVi ? "Email đã được xác minh." : "邮箱已验证。")
         : data.delivery === "dev" && data.devCode
-          ? (isVi ? `Đã tạo mã xác minh. Mã dev: ${data.devCode}` : `Verification code created. Dev code: ${data.devCode}`)
-          : (isVi ? "Đã gửi mã xác minh tới email của bạn." : "Verification code sent to your email.");
+          ? (isVi ? `Đã tạo mã xác minh. Mã dev: ${data.devCode}` : `已生成验证码。开发码：${data.devCode}`)
+          : (isVi ? "Đã gửi mã xác minh tới email của bạn." : "验证码已发送至你的邮箱。");
       message.textContent = state.emailVerificationStatus;
       message.classList.add("success");
     } catch (error) {
-      state.emailVerificationStatus = error.message || (isVi ? "Không thể gửi mã xác minh." : "Could not send verification code.");
+      state.emailVerificationStatus = error.message || (isVi ? "Không thể gửi mã xác minh." : "无法发送验证码。");
       message.textContent = state.emailVerificationStatus;
       message.classList.add("error");
     } finally {
@@ -3330,13 +3337,13 @@ function showEmailVerificationModal() {
     const code = String(state.emailVerificationCode || "").replace(/\D/g, "");
     message.className = "auth-form-message";
     if (!/^\d{6}$/.test(code)) {
-      state.emailVerificationStatus = isVi ? "Vui lòng nhập mã gồm 6 chữ số." : "Enter the 6-digit code.";
+      state.emailVerificationStatus = isVi ? "Vui lòng nhập mã gồm 6 chữ số." : "请输入 6 位验证码。";
       message.textContent = state.emailVerificationStatus;
       message.classList.add("error");
       return;
     }
     confirmBtn.disabled = true;
-    message.textContent = isVi ? "Đang xác minh mã..." : "Verifying code...";
+    message.textContent = isVi ? "Đang xác minh mã..." : "正在验证验证码...";
     try {
       const data = await apiRequest(`/api/users/${encodeURIComponent(state.user.id)}/email-verification/confirm`, {
         method: "POST",
@@ -3346,7 +3353,7 @@ function showEmailVerificationModal() {
       if (data.user) state.user = { ...state.user, ...data.user };
       state.emailVerificationCode = "";
       state.emailVerificationFormOpen = false;
-      state.emailVerificationStatus = isVi ? "Xác minh email thành công." : "Email verified successfully.";
+      state.emailVerificationStatus = isVi ? "Xác minh email thành công." : "邮箱验证成功。";
       saveState();
       recordUserActivity("email_verified");
       renderAccount();
@@ -3354,7 +3361,7 @@ function showEmailVerificationModal() {
       message.classList.add("success");
       setTimeout(() => modalDiv.remove(), 500);
     } catch (error) {
-      state.emailVerificationStatus = error.message || (isVi ? "Mã xác minh không hợp lệ." : "Invalid verification code.");
+      state.emailVerificationStatus = error.message || (isVi ? "Mã xác minh không hợp lệ." : "验证码无效。");
       message.textContent = state.emailVerificationStatus;
       message.classList.add("error");
     } finally {
@@ -3365,7 +3372,7 @@ function showEmailVerificationModal() {
 
 function showChangePasswordModal() {
   if (BACKEND_DISABLED) {
-    showToast(BACKEND_DISABLED_MESSAGE);
+    showToast(backendDisabledMessage());
     return;
   }
   if (!state.user?.id) {
@@ -3389,25 +3396,25 @@ function showChangePasswordModal() {
           <path d="M8 11V8a4 4 0 0 1 8 0v3" />
         </svg>
       </div>
-      <h2>${isVi ? "Đổi mật khẩu" : "Change password"}</h2>
-      <p class="auth-modal-sub">${isVi ? "Nhập mật khẩu hiện tại để bảo vệ tài khoản của bạn." : "Enter your current password to keep your account protected."}</p>
+      <h2>${isVi ? "Đổi mật khẩu" : "修改密码"}</h2>
+      <p class="auth-modal-sub">${isVi ? "Nhập mật khẩu hiện tại để bảo vệ tài khoản của bạn." : "请输入当前密码以保护你的账号。"}</p>
 
       <form id="changePasswordForm" class="auth-form change-password-form">
         <div class="form-group">
-          <label for="currentPasswordInput">${isVi ? "Mật khẩu hiện tại" : "Current password"}</label>
+          <label for="currentPasswordInput">${isVi ? "Mật khẩu hiện tại" : "当前密码"}</label>
           <input type="password" id="currentPasswordInput" autocomplete="current-password" required />
         </div>
         <div class="form-group">
-          <label for="newPasswordInput">${isVi ? "Mật khẩu mới" : "New password"}</label>
+          <label for="newPasswordInput">${isVi ? "Mật khẩu mới" : "新密码"}</label>
           <input type="password" id="newPasswordInput" autocomplete="new-password" minlength="6" required />
-          <small class="change-password-hint">${isVi ? "Tối thiểu 6 ký tự." : "At least 6 characters."}</small>
+          <small class="change-password-hint">${isVi ? "Tối thiểu 6 ký tự." : "至少 6 个字符。"}</small>
         </div>
         <div class="form-group">
-          <label for="confirmPasswordInput">${isVi ? "Nhập lại mật khẩu mới" : "Confirm new password"}</label>
+          <label for="confirmPasswordInput">${isVi ? "Nhập lại mật khẩu mới" : "确认新密码"}</label>
           <input type="password" id="confirmPasswordInput" autocomplete="new-password" minlength="6" required />
         </div>
         <p class="auth-form-message" id="changePasswordMessage" role="status"></p>
-        <button type="submit" class="btn-auth-submit">${isVi ? "Cập nhật mật khẩu" : "Update password"}</button>
+        <button type="submit" class="btn-auth-submit">${isVi ? "Cập nhật mật khẩu" : "更新密码"}</button>
       </form>
     </div>
   `;
@@ -3431,18 +3438,18 @@ function showChangePasswordModal() {
     message.textContent = "";
     message.className = "auth-form-message";
     if (newPassword !== confirmPassword) {
-      message.textContent = isVi ? "Mật khẩu xác nhận không khớp." : "The confirmation password does not match.";
+      message.textContent = isVi ? "Mật khẩu xác nhận không khớp." : "两次输入的新密码不一致。";
       message.classList.add("error");
       return;
     }
     if (currentPassword === newPassword) {
-      message.textContent = isVi ? "Mật khẩu mới cần khác mật khẩu hiện tại." : "The new password must be different from the current password.";
+      message.textContent = isVi ? "Mật khẩu mới cần khác mật khẩu hiện tại." : "新密码不能与当前密码相同。";
       message.classList.add("error");
       return;
     }
 
     submitBtn.disabled = true;
-    submitBtn.textContent = isVi ? "Đang cập nhật..." : "Updating...";
+    submitBtn.textContent = isVi ? "Đang cập nhật..." : "正在更新...";
 
     try {
       await apiRequest(`/api/users/${encodeURIComponent(state.user.id)}/password`, {
@@ -3450,17 +3457,17 @@ function showChangePasswordModal() {
         headers: { "X-User-Id": state.user.id },
         body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),
       });
-      message.textContent = isVi ? "Đã đổi mật khẩu thành công." : "Password changed successfully.";
+      message.textContent = isVi ? "Đã đổi mật khẩu thành công." : "密码修改成功。";
       message.classList.add("success");
       recordUserActivity("password");
-      showToast(isVi ? "Đã đổi mật khẩu thành công" : "Password changed successfully");
+      showToast(isVi ? "Đã đổi mật khẩu thành công" : "密码修改成功");
       setTimeout(closeModal, 650);
     } catch (error) {
-      message.textContent = error.message || (isVi ? "Không thể đổi mật khẩu." : "Could not change password.");
+      message.textContent = error.message || (isVi ? "Không thể đổi mật khẩu." : "无法修改密码。");
       message.classList.add("error");
     } finally {
       submitBtn.disabled = false;
-      submitBtn.textContent = isVi ? "Cập nhật mật khẩu" : "Update password";
+      submitBtn.textContent = isVi ? "Cập nhật mật khẩu" : "更新密码";
     }
   };
 }
@@ -3719,7 +3726,7 @@ async function persistDailyReminderSetting(enabled) {
 
 async function sendAccountEmailVerificationCode() {
   if (BACKEND_DISABLED) {
-    showToast(BACKEND_DISABLED_MESSAGE);
+    showToast(backendDisabledMessage());
     return;
   }
   if (!state.user?.id) {
@@ -3729,7 +3736,7 @@ async function sendAccountEmailVerificationCode() {
   const isVi = state.lang === "vi";
   state.emailVerificationFormOpen = true;
   state.emailVerificationSending = true;
-  state.emailVerificationStatus = isVi ? "Đang gửi mã xác minh..." : "Sending verification code...";
+  state.emailVerificationStatus = isVi ? "Đang gửi mã xác minh..." : "正在发送验证码...";
   renderAccount();
   try {
     const data = await apiRequest(`/api/users/${encodeURIComponent(state.user.id)}/email-verification/send`, {
@@ -3737,13 +3744,13 @@ async function sendAccountEmailVerificationCode() {
       headers: { "X-User-Id": state.user.id },
     });
     state.emailVerificationStatus = data.alreadyVerified
-      ? (isVi ? "Email đã được xác minh." : "Email is already verified.")
+      ? (isVi ? "Email đã được xác minh." : "邮箱已验证。")
       : data.delivery === "dev" && data.devCode
-        ? (isVi ? `Đã tạo mã xác minh. Mã dev: ${data.devCode}` : `Verification code created. Dev code: ${data.devCode}`)
-        : (isVi ? "Đã gửi mã xác minh tới email của bạn." : "Verification code sent to your email.");
+        ? (isVi ? `Đã tạo mã xác minh. Mã dev: ${data.devCode}` : `已生成验证码。开发码：${data.devCode}`)
+        : (isVi ? "Đã gửi mã xác minh tới email của bạn." : "验证码已发送至你的邮箱。");
     showToast(state.emailVerificationStatus);
   } catch (error) {
-    state.emailVerificationStatus = error.message || (isVi ? "Không thể gửi mã xác minh." : "Could not send verification code.");
+    state.emailVerificationStatus = error.message || (isVi ? "Không thể gửi mã xác minh." : "无法发送验证码。");
     showToast(state.emailVerificationStatus);
   } finally {
     state.emailVerificationSending = false;
@@ -3753,7 +3760,7 @@ async function sendAccountEmailVerificationCode() {
 
 async function confirmAccountEmailVerificationCode() {
   if (BACKEND_DISABLED) {
-    showToast(BACKEND_DISABLED_MESSAGE);
+    showToast(backendDisabledMessage());
     return;
   }
   if (!state.user?.id) {
@@ -3763,12 +3770,12 @@ async function confirmAccountEmailVerificationCode() {
   const isVi = state.lang === "vi";
   const code = String(state.emailVerificationCode || "").replace(/\D/g, "");
   if (!/^\d{6}$/.test(code)) {
-    state.emailVerificationStatus = isVi ? "Vui lòng nhập mã gồm 6 chữ số." : "Enter the 6-digit code.";
+    state.emailVerificationStatus = isVi ? "Vui lòng nhập mã gồm 6 chữ số." : "请输入 6 位验证码。";
     renderAccount();
     return;
   }
   state.emailVerificationConfirming = true;
-  state.emailVerificationStatus = isVi ? "Đang xác minh mã..." : "Verifying code...";
+  state.emailVerificationStatus = isVi ? "Đang xác minh mã..." : "正在验证验证码...";
   renderAccount();
   try {
     const data = await apiRequest(`/api/users/${encodeURIComponent(state.user.id)}/email-verification/confirm`, {
@@ -3779,12 +3786,12 @@ async function confirmAccountEmailVerificationCode() {
     if (data.user) state.user = { ...state.user, ...data.user };
     state.emailVerificationCode = "";
     state.emailVerificationFormOpen = false;
-    state.emailVerificationStatus = isVi ? "Xác minh email thành công." : "Email verified successfully.";
+    state.emailVerificationStatus = isVi ? "Xác minh email thành công." : "邮箱验证成功。";
     saveState();
     recordUserActivity("email_verified");
     showToast(state.emailVerificationStatus);
   } catch (error) {
-    state.emailVerificationStatus = error.message || (isVi ? "Mã xác minh không hợp lệ." : "Invalid verification code.");
+    state.emailVerificationStatus = error.message || (isVi ? "Mã xác minh không hợp lệ." : "验证码无效。");
     showToast(state.emailVerificationStatus);
   } finally {
     state.emailVerificationConfirming = false;
@@ -3867,7 +3874,6 @@ function renderAccount() {
   const hasPremium = hasPremiumAccess();
   const avatarUrl = getAccountAvatarUrl();
   const dailyReminderEnabled = state.user.dailyReminderEnabled !== false;
-  const emailVerified = state.user.emailVerified === true;
   const studyDays = Math.max(1, Math.floor((Date.now() - new Date(state.user.createdAt || Date.now()).getTime()) / 86400000) + 1);
   const levelOptions = Object.keys(hskLevels).map((level) => `
     <option value="${level}" ${level === currentLevel ? "selected" : ""}>${formatAccountLevelLabel(level, isVi)}</option>
@@ -3882,12 +3888,12 @@ function renderAccount() {
   const levelProgressPercent = Math.min(100, Math.max(8, Math.round((levelCompletedLessons / Math.max(1, levelTotalLessons)) * 100)));
   const securityText = isVi
     ? "Thông tin của bạn được mã hóa và bảo vệ tuyệt đối."
-    : "Your information is encrypted and protected.";
+    : "你的信息已加密并受到保护。";
   const upgradeBannerTitle = hasPremium
-    ? (isVi ? "Tài khoản HuaMei Pro" : "HuaMei Pro account")
+    ? (isVi ? "Tài khoản HuaMei Pro" : "HuaMei Pro 账号")
     : (isVi ? "Nâng cấp HuaMei Pro" : "升级 HuaMei Pro");
   const upgradeBannerText = hasPremium
-    ? (isVi ? "Bạn đã mở khóa toàn bộ bài học HSK nâng cao, học không giới hạn cùng trợ lý AI và quyền lợi Pro." : "You have unlocked advanced HSK lessons, unlimited learning with the AI assistant, and Pro benefits.")
+    ? (isVi ? "Bạn đã mở khóa toàn bộ bài học HSK nâng cao, học không giới hạn cùng trợ lý AI và quyền lợi Pro." : "你已解锁高级 HSK 课程、AI 助手无限学习和 Pro 权益。")
     : (isVi ? "Mở khóa tất cả bài học HSK nâng cao, học không giới hạn cùng trợ lý AI và nhận chứng chỉ sau mỗi cấp độ." : "解锁高级 HSK 课程、无限学习 AI 助手，并在每个级别后获得证书。");
 
   setScreenWithDesktopShell("account", `
@@ -3913,7 +3919,7 @@ function renderAccount() {
         ${hasPremium ? `
           <span class="account-upgrade-status">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 2l2.2 4.8 5.3.7-3.8 3.7.9 5.3-4.6-2.5-4.6 2.5.9-5.3L4.5 7.5l5.3-.7L12 2z"/></svg>
-            ${isVi ? "Đã lưu thông tin tài khoản" : "Account details saved"}
+            ${isVi ? "Đã lưu thông tin tài khoản" : "账号信息已保存"}
           </span>
         ` : `
           <button type="button" class="account-upgrade-btn">
@@ -3949,40 +3955,40 @@ function renderAccount() {
               <span class="account-metric-icon account-metric-icon--calendar" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg>
               </span>
-              <small>${isVi ? "Ngày học" : "Study days"}</small>
-              <strong>${studyDays} ${isVi ? "ngày" : "days"}</strong>
+              <small>${isVi ? "Ngày học" : "学习天数"}</small>
+              <strong>${studyDays} ${isVi ? "ngày" : "天"}</strong>
             </article>
             <article>
               <span class="account-metric-icon account-metric-icon--target" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3"/><path d="M22 12h-3"/></svg>
               </span>
-              <small>${isVi ? "Độ chính xác" : "Accuracy"}</small>
+              <small>${isVi ? "Độ chính xác" : "准确率"}</small>
               <strong>92%</strong>
             </article>
             <article>
               <span class="account-metric-icon account-metric-icon--book" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z"/></svg>
               </span>
-              <small>${isVi ? "Từ đã luyện" : "Words"}</small>
-              <strong>${savedCount} ${isVi ? "từ" : "words"}</strong>
+              <small>${isVi ? "Từ đã luyện" : "已练词汇"}</small>
+              <strong>${savedCount} ${isVi ? "từ" : "词"}</strong>
             </article>
           </div>
           <section class="account-progress-card account-desktop-only">
             <div>
-              <h4>${isVi ? `Tiến độ ${levelBadgeLabel}` : `${levelBadgeLabel} progress`}</h4>
+              <h4>${isVi ? `Tiến độ ${levelBadgeLabel}` : `${levelBadgeLabel} 进度`}</h4>
               <strong>${levelProgressPercent}%</strong>
             </div>
             <span class="account-progress-track"><i style="width:${levelProgressPercent}%"></i></span>
-            <p><span>${isVi ? `Đã học ${levelCompletedLessons} / ${levelTotalLessons} bài` : `${levelCompletedLessons} / ${levelTotalLessons} lessons`}</span><button type="button" data-home-nav="hsk">${isVi ? "Xem chi tiết" : "Details"} ›</button></p>
+            <p><span>${isVi ? `Đã học ${levelCompletedLessons} / ${levelTotalLessons} bài` : `已学 ${levelCompletedLessons} / ${levelTotalLessons} 课`}</span><button type="button" data-home-nav="hsk">${isVi ? "Xem chi tiết" : "查看详情"} ›</button></p>
           </section>
           <section class="account-achievements-card account-desktop-only">
             <div class="account-card-heading">
-              <h4>${isVi ? "Thành tích của bạn" : "Your achievements"}</h4>
+              <h4>${isVi ? "Thành tích của bạn" : "你的成就"}</h4>
             </div>
             <div class="account-achievements-grid">
-              <article><img src="assets/content-lock-icon.png" alt="" /><strong>${isVi ? "Chăm chỉ" : "Diligent"}</strong><small>${isVi ? `${studyDays} ngày` : `${studyDays} day streak`}</small></article>
-              <article><img src="assets/review_user_2.png" alt="" /><strong>${isVi ? "Đã học" : "Lessons"}</strong><small>${isVi ? `${completedCount} bài` : `${completedCount} completed lessons`}</small></article>
-              <article><img src="assets/review_user_3.png" alt="" /><strong>${isVi ? "Bộ từ" : "Vocabulary"}</strong><small>${isVi ? `${savedCount} từ vựng` : `${savedCount} saved words`}</small></article>
+              <article><img src="assets/content-lock-icon.png" alt="" /><strong>${isVi ? "Chăm chỉ" : "勤奋"}</strong><small>${isVi ? `${studyDays} ngày` : `连续 ${studyDays} 天`}</small></article>
+              <article><img src="assets/review_user_2.png" alt="" /><strong>${isVi ? "Đã học" : "已学习"}</strong><small>${isVi ? `${completedCount} bài` : `${completedCount} 课已完成`}</small></article>
+              <article><img src="assets/review_user_3.png" alt="" /><strong>${isVi ? "Bộ từ" : "生词本"}</strong><small>${isVi ? `${savedCount} từ vựng` : `${savedCount} 个已收藏词`}</small></article>
             </div>
           </section>
           <div class="account-streak">
@@ -4002,25 +4008,25 @@ function renderAccount() {
               </svg>
             </span>
           </div>
-          <nav class="account-side-nav" aria-label="${isVi ? "Cài đặt tài khoản" : "Account settings"}">
+          <nav class="account-side-nav" aria-label="${isVi ? "Cài đặt tài khoản" : "账号设置"}">
             <button class="active" type="button">
               <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0" /><circle cx="12" cy="7" r="4" /></svg>
-              <span>${isVi ? "Thông tin cơ bản" : "Basic info"}</span>
+              <span>${isVi ? "Thông tin cơ bản" : "基本信息"}</span>
             </button>
             <button id="accountChangePasswordBtn" type="button">
               <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3v8z" /><path d="m9 12 2 2 4-5" /></svg>
-              <span>${isVi ? "Bảo mật tài khoản" : "Security"}</span>
+              <span>${isVi ? "Bảo mật tài khoản" : "账号安全"}</span>
             </button>
             <button type="button" id="accountMobileLanguageBtn">
               <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 7h18s-3 0-3-7" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
-              <span>${isVi ? "Cài đặt thông báo" : "Notifications"}</span>
+              <span>${isVi ? "Cài đặt thông báo" : "通知设置"}</span>
             </button>
           </nav>
           <button class="account-help-card" type="button">
             <span aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6" /><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3v5Z" /><path d="M3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3v5Z" /></svg>
             </span>
-            <span><strong>${isVi ? "Cần hỗ trợ?" : "Need help?"}</strong><small>${isVi ? "Liên hệ với chúng tôi" : "Contact us"}</small></span>
+            <span><strong>${isVi ? "Cần hỗ trợ?" : "需要帮助？"}</strong><small>${isVi ? "Liên hệ với chúng tôi" : "联系我们"}</small></span>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
           </button>
         </aside>
@@ -4048,12 +4054,12 @@ function renderAccount() {
               </span>
               <div>
                 <h2>${isVi ? "Thông tin cơ bản" : "基本信息"}</h2>
-                <p>${isVi ? "Cập nhật thông tin để bảo mật tài khoản" : "Update information to keep your account secure"}</p>
+                <p>${isVi ? "Cập nhật thông tin để bảo mật tài khoản" : "更新信息以保护你的账号"}</p>
               </div>
             </div>
             <em>
               <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
-              ${isVi ? `Cập nhật lần cuối: ${updatedLabel}` : `Last updated: ${updatedLabel}`}
+              ${isVi ? `Cập nhật lần cuối: ${updatedLabel}` : `最后更新：${updatedLabel}`}
             </em>
           </div>
 
@@ -4093,7 +4099,7 @@ function renderAccount() {
               <span class="account-security-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3v8z" /><path d="m9 12 2 2 4-5" /></svg>
               </span>
-              <span><strong>${isVi ? "Bảo mật tài khoản" : "Account security"}</strong><small>${securityText}</small></span>
+              <span><strong>${isVi ? "Bảo mật tài khoản" : "账号安全"}</strong><small>${securityText}</small></span>
               <span class="account-security-lock" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="78" height="78" fill="currentColor"><path d="M17 9V7A5 5 0 0 0 7 7v2a3 3 0 0 0-2 2.83V19a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-7.17A3 3 0 0 0 17 9Zm-8 0V7a3 3 0 0 1 6 0v2H9Zm4 7.73V18a1 1 0 1 1-2 0v-1.27a2 2 0 1 1 2 0Z" /></svg>
               </span>
@@ -4110,38 +4116,20 @@ function renderAccount() {
             </div>
           </form>
           <div class="account-desktop-widgets account-desktop-only">
-            <section class="account-widget account-email-verify-widget ${emailVerified ? "verified" : ""}">
+            <section class="account-widget account-security-widget">
               <div>
-                <h3>${isVi ? "Xác minh email" : "Email verification"}</h3>
-                <p>${emailVerified
-                  ? (isVi ? "Email tài khoản đã được xác minh" : "Your account email is verified")
-                  : (isVi ? `Mã xác minh sẽ được gửi tới ${email}` : `A verification code will be sent to ${email}`)}</p>
+                <h3>${isVi ? "Đổi mật khẩu" : "修改密码"}</h3>
+                <p>${isVi ? "Cập nhật mật khẩu để bảo vệ tài khoản" : "更新密码以保护账号"}</p>
               </div>
-              <div class="account-email-verify-form">
-                ${emailVerified ? `
-                  <span class="account-email-verified-badge">${isVi ? "Đã xác minh" : "Verified"}</span>
-                ` : `
-                  <button type="button" class="account-email-open-form-btn" id="accountOpenEmailVerificationBtn">${isVi ? "Xác minh" : "Verify"}</button>
-                  ${state.emailVerificationStatus ? `<small>${escapeHtml(state.emailVerificationStatus)}</small>` : ""}
-                `}
+              <div class="account-widget-row">
+                <span>${isVi ? "Bảo mật tài khoản" : "账号安全"}</span>
+                <button type="button" id="accountDesktopChangePasswordAltBtn">${isVi ? "Đổi mật khẩu" : "修改密码"}</button>
               </div>
             </section>
-            ${emailVerified ? `
-              <section class="account-widget account-security-widget">
-                <div>
-                  <h3>${isVi ? "Bảo mật tài khoản" : "Account security"}</h3>
-                  <p>${isVi ? "Mật khẩu đã được bảo vệ" : "Password is protected"}</p>
-                </div>
-                <div class="account-widget-row">
-                  <span>${isVi ? "Đã xác minh email" : "Email verified"}</span>
-                  <button type="button" id="accountDesktopChangePasswordAltBtn">${isVi ? "Đổi mật khẩu" : "Change password"}</button>
-                </div>
-              </section>
-            ` : ""}
             <section class="account-widget account-notification-widget">
               <div>
-                <h3>${isVi ? "Tùy chọn thông báo" : "Notification options"}</h3>
-                <p>${isVi ? "Nhắc học mỗi ngày" : "Daily learning reminder"}</p>
+                <h3>${isVi ? "Tùy chọn thông báo" : "通知选项"}</h3>
+                <p>${isVi ? "Nhắc học mỗi ngày" : "每日学习提醒"}</p>
               </div>
               <label class="account-toggle">
                 <input type="checkbox" id="accountDailyReminderInput" ${dailyReminderEnabled ? "checked" : ""} />
@@ -4150,8 +4138,8 @@ function renderAccount() {
             </section>
             <section class="account-activity-card">
               <div class="account-card-heading">
-                <h3>${isVi ? "Hoạt động gần đây" : "Recent activity"}</h3>
-                <button type="button" data-account-activities-all>${isVi ? "Xem tất cả" : "View all"} ›</button>
+                <h3>${isVi ? "Hoạt động gần đây" : "最近活动"}</h3>
+                <button type="button" data-account-activities-all>${isVi ? "Xem tất cả" : "查看全部"} ›</button>
               </div>
               ${renderRecentActivitiesHTML(isVi, updatedLabel)}
             </section>
@@ -4925,7 +4913,7 @@ function renderHomeDesktopLayoutHTML(isVi) {
   const avatarHTML = avatarUrl
     ? `<img src="${escapeAttr(avatarUrl)}" alt="${escapeAttr(userName)}" />`
     : escapeHtml(userInitial);
-  const accountTypeLabel = state.user?.role === "admin" ? "Admin" : state.user?.role === "employee" ? (isVi ? "Nhân viên" : "员工") : hasPremiumAccess() ? "Pro" : "Free";
+  const accountTypeLabel = state.user?.role === "admin" ? (isVi ? "Admin" : "管理员") : state.user?.role === "employee" ? (isVi ? "Nhân viên" : "员工") : hasPremiumAccess() ? "Pro" : (isVi ? "Free" : "免费");
   const studyHours = Math.floor(stats.studyMinutes / 60);
   const studyMins = stats.studyMinutes % 60;
   const studyLabel = studyHours > 0
@@ -4936,7 +4924,7 @@ function renderHomeDesktopLayoutHTML(isVi) {
         <div class="home-desktop-profile-card">
           <div class="home-desktop-avatar">${avatarHTML}</div>
           <div>
-            <p>${isVi ? "Xin chÃ o!" : "ä½ å¥½ï¼"}</p>
+            <p>${isVi ? "Xin chào!" : "你好！"}</p>
             <strong>${escapeHtml(desktopProfileName)}</strong>
           </div>
           <span class="home-desktop-level-badge">${escapeHtml(accountTypeLabel)}</span>
@@ -5064,7 +5052,7 @@ function renderHomeMobileTopbarHTML(isVi) {
             <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" aria-hidden="true">
               <path d="M12 2l2.2 4.8 5.3.7-3.8 3.7.9 5.3-4.6-2.5-4.6 2.5.9-5.3L4.5 7.5l5.3-.7L12 2z"/>
             </svg>
-            ${escapeHtml(state.user?.role === "admin" ? "Admin" : state.user?.role === "employee" ? (isVi ? "Nhân viên" : "员工") : hasPremiumAccess() ? "Pro" : "Free")}
+            ${escapeHtml(state.user?.role === "admin" ? (isVi ? "Admin" : "管理员") : state.user?.role === "employee" ? (isVi ? "Nhân viên" : "员工") : hasPremiumAccess() ? "Pro" : (isVi ? "Free" : "免费"))}
           </span>
         </span>`}
       </div>
@@ -5550,7 +5538,12 @@ function renderHskCourse() {
   const pendingLesson = getHskPendingLesson();
   const totalWordsInLevel = hskLevels[state.level].reduce((acc, lessonItem) => acc + hskLessonItemsByType(lessonItem, "word").length, 0);
   const totalSentencesInLevel = hskLevels[state.level].reduce((acc, lessonItem) => acc + hskLessonItemsByType(lessonItem, "sentence").length, 0);
-  const heroTitle = pendingLesson ? (isVi ? "Chọn phần học" : "选择学习部分") : state.level;
+  const heroTitle = pendingLesson
+    ? (isVi ? "Chọn phần học" : "选择学习部分")
+    : (isVi ? `Danh sách bài học ${state.level}` : `${state.level} 课程列表`);
+  const mobileHeroTitle = pendingLesson
+    ? (isVi ? "Chọn phần học" : "选择学习部分")
+    : (isVi ? `Danh sách bài học ${state.level}` : `${state.level} 课程列表`);
   const heroBackAttr = pendingLesson ? "data-hsk-back-lessons" : "data-hsk-level-back";
   const heroBackLabel = pendingLesson
     ? (isVi ? "Quay lại danh sách bài" : "返回课程列表")
@@ -5564,7 +5557,7 @@ function renderHskCourse() {
             <path d="M15 18l-6-6 6-6" />
           </svg>
         </button>
-        <h1>${heroTitle}</h1>
+        <h1 data-mobile-title="${escapeAttr(mobileHeroTitle)}">${heroTitle}</h1>
         <div class="hsk-lesson-hero-art" aria-hidden="true">
           <span class="hsk-lesson-art-card">汉</span>
           <span class="hsk-lesson-art-book">写</span>
@@ -5586,11 +5579,6 @@ function renderHskCourse() {
           <div class="hsk-lesson-panel-header">
             <div class="hsk-lesson-title-group">
               <h2>${isVi ? `Danh sách bài học ${state.level}` : `${state.level} 课程列表`}</h2>
-              <div class="hsk-lesson-summary">
-                <span><i>${iconSvg("book-open")}</i><strong>${totalLessons}</strong> ${isVi ? "bài học" : "课"}</span>
-                <span><i>${iconSvg("letters")}</i><strong>${totalWordsInLevel}</strong> ${isVi ? "từ vựng" : "词"}</span>
-                <span><i>${iconSvg("message")}</i><strong>${totalSentencesInLevel}</strong> ${isVi ? "câu" : "句"}</span>
-              </div>
             </div>
           </div>
 
@@ -5789,8 +5777,8 @@ function renderDailyRemainingThemesHTML(currentTheme) {
   return `
     <section class="daily-remaining-themes-section">
       <div class="daily-remaining-themes-heading">
-        <h2>${isVi ? "Các chủ đề còn lại" : "Other topics"}</h2>
-        <span>${isVi ? "Thông dụng · chọn nhanh chủ đề khác" : "Common Chinese · choose another topic"}</span>
+        <h2>${isVi ? "Các chủ đề còn lại" : "其他主题"}</h2>
+        <span>${isVi ? "Thông dụng · chọn nhanh chủ đề khác" : "常用中文 · 快速选择其他主题"}</span>
       </div>
       <div class="daily-theme-grid daily-theme-grid--remaining">
         ${cardsHTML}
@@ -6075,6 +6063,46 @@ function findItemByHanzi(hanzi) {
   };
 }
 
+function normalizeVocabPracticeItem(itemDetail, hanzi = "") {
+  const item = itemDetail || {};
+  const itemHanzi = item.hanzi || hanzi;
+  const words = Array.isArray(item.words) && item.words.length > 0
+    ? item.words
+    : itemHanzi
+      ? [{
+        text: itemHanzi,
+        pinyin: item.pinyin || "",
+        tone: item.tone || "",
+        pos: item.pos || "",
+        vi: item.vi || "",
+      }]
+      : [];
+
+  return {
+    ...item,
+    hanzi: itemHanzi,
+    vi: item.vi || "",
+    stage: item.stage || "word",
+    words,
+  };
+}
+
+function startSavedVocabPractice(index = 0) {
+  const items = [...state.saved]
+    .map(hanzi => normalizeVocabPracticeItem(findItemByHanzi(hanzi), hanzi))
+    .filter(item => item.hanzi && item.words.length > 0);
+
+  if (items.length === 0) {
+    showToast(state.lang === "vi" ? "Chưa có từ vựng để ôn tập" : "暂无可复习词汇");
+    return false;
+  }
+
+  const safeIndex = Math.max(0, Math.min(Number(index) || 0, items.length - 1));
+  state.fromRoadmap = false;
+  startPractice({ module: "vocab", index: safeIndex, mode: state.mode || "translate" });
+  return true;
+}
+
 function getFilteredVocabItems() {
   let savedList = Array.from(state.saved).map(hanzi => {
     const detail = findItemByHanzi(hanzi);
@@ -6288,12 +6316,13 @@ function startPractice(options = {}) {
 }
 
 function renderPractice() {
+  const isVi = state.lang === "vi";
   const collection = currentCollection();
   const itemNow = currentItem();
   const promptVariant = state.mode === "dictation" ? "dictation" : getPromptSizeVariant(itemNow.vi);
   screens.practice.innerHTML = `
     <header class="practice-top">
-      <button id="practiceCloseBtn" class="practice-close-btn" type="button" aria-label="Close">&times;</button>  
+      <button id="practiceCloseBtn" class="practice-close-btn" type="button" aria-label="${isVi ? "Đóng" : "关闭"}">&times;</button>  
 
       <div class="thin-progress"><span style="width:${((state.index + 1) / collection.items.length) * 100}%"></span></div>
       <div class="mode-switch" aria-label="${t("modeLabel")}">
@@ -6837,16 +6866,6 @@ function bindEvents() {
 
     const accountChangePasswordBtn = event.target.closest("#accountChangePasswordBtn, #accountMobileChangePasswordBtn, #accountDesktopChangePasswordBtn, #accountDesktopChangePasswordAltBtn");
     if (accountChangePasswordBtn) {
-      if (state.user?.emailVerified !== true) {
-        state.emailVerificationFormOpen = true;
-        state.emailVerificationStatus = state.lang === "vi"
-          ? "Vui lòng xác minh email trước khi đổi mật khẩu."
-          : "Please verify your email before changing password.";
-        renderAccount();
-        showToast(state.emailVerificationStatus);
-        showEmailVerificationModal();
-        return;
-      }
       showChangePasswordModal();
       return;
     }
@@ -6895,7 +6914,7 @@ function bindEvents() {
     const mobileAdminBtn = event.target.closest("#mobileAdminBtn");
     if (mobileAdminBtn) {
       if (BACKEND_DISABLED) {
-        showToast(BACKEND_DISABLED_MESSAGE);
+        showToast(backendDisabledMessage());
         $("#mobileMenu")?.classList.remove("active");
         return;
       }
@@ -6908,7 +6927,7 @@ function bindEvents() {
     const loginBtn = event.target.closest("#loginBtn") || event.target.closest("#mobileLoginBtn") || event.target.closest("#sidebarLoginBtn");
     if (loginBtn) {
       if (BACKEND_DISABLED) {
-        showToast(BACKEND_DISABLED_MESSAGE);
+        showToast(backendDisabledMessage());
         $("#mobileMenu")?.classList.remove("active");
         return;
       }
@@ -6927,7 +6946,7 @@ function bindEvents() {
       } else if (!BACKEND_DISABLED) {
         showModal("register");
       } else {
-        showToast(BACKEND_DISABLED_MESSAGE);
+        showToast(backendDisabledMessage());
       }
       $("#mobileMenu")?.classList.remove("active");
       return;
@@ -6974,7 +6993,7 @@ function bindEvents() {
     const navAdminBtn = event.target.closest("#navAdminBtn");
     if (navAdminBtn) {
       if (BACKEND_DISABLED) {
-        showToast(BACKEND_DISABLED_MESSAGE);
+        showToast(backendDisabledMessage());
         return;
       }
       state.fromRoadmap = false;
@@ -7266,6 +7285,10 @@ function bindEvents() {
 
     const homeModuleBtn = event.target.closest("[data-home-module]");
     if (homeModuleBtn) {
+      if (homeModuleBtn.dataset.homeModule === "vocab") {
+        startSavedVocabPractice();
+        return;
+      }
       navigatePrimaryTab(homeModuleBtn.dataset.homeModule);
       return;
     }
@@ -7351,6 +7374,10 @@ function bindEvents() {
     }
     const moduleBtn = event.target.closest("[data-module]");
     if (moduleBtn) {
+      if (moduleBtn.dataset.module === "vocab") {
+        startSavedVocabPractice();
+        return;
+      }
       state.module = moduleBtn.dataset.module;
       state.hskLevelPicker = state.module === "hsk";
       state.hskPendingLessonId = "";
@@ -7615,10 +7642,9 @@ function bindEvents() {
         return;
       }
       const firstHanzi = items[0].hanzi;
-      const savedItems = [...state.saved].map(hanzi => findItemByHanzi(hanzi));
+      const savedItems = [...state.saved].map(hanzi => normalizeVocabPracticeItem(findItemByHanzi(hanzi), hanzi));
       const index = Math.max(0, savedItems.findIndex(item => item.hanzi === firstHanzi));
-      state.fromRoadmap = false;
-      startPractice({ module: "vocab", index: index, mode: state.mode || "translate" });
+      startSavedVocabPractice(index);
       return;
     }
 
@@ -7635,11 +7661,10 @@ function bindEvents() {
     const vocabCard = event.target.closest(".vocab-item-card");
     if (vocabCard && !vocabDeleteBtn && !vocabSpeakBtn) {
       const hanzi = vocabCard.dataset.vocabHanzi;
-      const items = [...state.saved].map(h => findItemByHanzi(h));
+      const items = [...state.saved].map(h => normalizeVocabPracticeItem(findItemByHanzi(h), h));
       const index = items.findIndex(item => item.hanzi === hanzi);
       if (index !== -1) {
-        state.fromRoadmap = false;
-        startPractice({ module: "vocab", index: index, mode: state.mode || "translate" });
+        startSavedVocabPractice(index);
       }
       return;
     }
@@ -7728,8 +7753,8 @@ function bindEvents() {
         .then(() => {
           recordUserActivity(enabled ? "reminder_on" : "reminder_off");
           showToast(enabled
-            ? (state.lang === "vi" ? "Đã bật nhắc học mỗi ngày" : "Daily reminder enabled")
-            : (state.lang === "vi" ? "Đã tắt nhắc học mỗi ngày" : "Daily reminder disabled"));
+            ? (state.lang === "vi" ? "Đã bật nhắc học mỗi ngày" : "已开启每日学习提醒")
+            : (state.lang === "vi" ? "Đã tắt nhắc học mỗi ngày" : "已关闭每日学习提醒"));
         })
         .catch((error) => {
           if (state.user) {
@@ -7737,7 +7762,7 @@ function bindEvents() {
             saveState();
           }
           checkbox.checked = previous;
-          showToast(error.message || (state.lang === "vi" ? "Không thể lưu tùy chọn nhắc học" : "Could not save reminder setting"));
+          showToast(error.message || (state.lang === "vi" ? "Không thể lưu tùy chọn nhắc học" : "无法保存提醒设置"));
         });
       return;
     }
@@ -7822,3 +7847,4 @@ function init() {
 }
 
 init();
+
