@@ -32,6 +32,7 @@ export class AdminService {
       isPremium,
       plan,
       premiumUntil: row.premium_until,
+      dailyReminderEnabled: row.daily_reminder_enabled !== false,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       lastLoginAt: row.last_login_at,
@@ -62,7 +63,7 @@ export class AdminService {
 
     try {
       const result = await this.db.query(
-        `SELECT id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at
+        `SELECT id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, daily_reminder_enabled, created_at, updated_at, last_login_at
          FROM users
          ORDER BY created_at DESC`,
       );
@@ -127,7 +128,7 @@ export class AdminService {
       const result = await this.db.query(
         `INSERT INTO users (full_name, email, password_hash, role, is_active, current_level, is_premium, premium_until)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at`,
+         RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, daily_reminder_enabled, created_at, updated_at, last_login_at`,
         [
           fullName,
           email,
@@ -170,7 +171,7 @@ export class AdminService {
         `UPDATE users
          SET full_name = $1, email = $2, role = $3, is_active = $4, current_level = $5, updated_at = NOW()
          WHERE id = $6
-         RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at`,
+         RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, daily_reminder_enabled, created_at, updated_at, last_login_at`,
         [fullName, email, role, isActive, currentLevel, id],
       );
       if (!result.rows[0]) {

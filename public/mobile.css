@@ -1,0 +1,381 @@
+/* Mobile-only overrides. Keep desktop/base styles in styles.css. */
+
+@media (max-width: 640px) {
+  .app-desktop-content:has(> .mobile-page-return-bar) {
+    padding-top: 48px !important;
+  }
+
+  .mobile-page-return-bar {
+    position: fixed !important;
+    top: 0;
+    left: 50%;
+    z-index: 1000;
+    width: min(100vw, 430px);
+    transform: translateX(-50%);
+  }
+
+  .screen-account .account-layout {
+    padding-top: 48px !important;
+  }
+
+  .screen-account .account-mobile-header {
+    position: fixed !important;
+    top: 0;
+    left: 50%;
+    z-index: 1000;
+    width: min(100vw, 430px);
+    transform: translateX(-50%);
+  }
+
+  .recent-activities-drawer {
+    width: min(100vw, 430px);
+  }
+
+  .recent-activities-drawer-header {
+    min-height: 72px;
+    padding: 16px 18px;
+  }
+
+  .recent-activities-drawer-header h2 {
+    font-size: 20px;
+  }
+
+  .recent-activities-drawer-body {
+    padding: 8px 18px calc(22px + env(safe-area-inset-bottom));
+  }
+
+  .hsk-lesson-hero,
+  .daily-course-header,
+  .vocab-page-heading,
+  .account-mobile-header,
+  .home-mobile-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 90;
+  }
+
+  .hsk-lesson-hero,
+  .daily-course-header,
+  .vocab-page-heading {
+    border-radius: 0;
+  }
+
+  .hsk-lesson-screen,
+  .daily-course-layout,
+  .vocab-layout,
+  .account-layout {
+    scroll-padding-top: 56px;
+  }
+
+  body:has(#practiceScreen:not(.hidden)) {
+    background: #f1fbf7;
+  }
+
+  #practiceScreen:not(.hidden) {
+    --practice-dock-height: clamp(114px, 32vw, 142px);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: 6px;
+    height: 100dvh;
+    padding: 4px 5px calc(var(--practice-dock-height) + max(8px, env(safe-area-inset-bottom)));
+    background: #f1fbf7;
+    overflow: hidden;
+  }
+
+  #practiceScreen .practice-top,
+  #practiceScreen .practice-meta,
+  #practiceScreen .practice-layout,
+  #practiceScreen .function-dock {
+    width: 100%;
+    max-width: 390px;
+  }
+
+  #practiceScreen .practice-top {
+    display: grid;
+    grid-template-columns: clamp(24px, 7vw, 32px) minmax(0, 1fr) auto;
+    gap: 5px;
+    align-items: center;
+  }
+
+  #practiceScreen .practice-close-btn {
+    width: clamp(24px, 7vw, 32px);
+    min-height: clamp(24px, 7vw, 32px);
+    border-radius: 6px;
+    font-size: clamp(14px, 3.8vw, 18px);
+  }
+
+  #practiceScreen .mode-switch {
+    justify-self: end;
+    gap: 4px;
+    padding: 2px;
+    border-radius: 999px;
+  }
+
+  #practiceScreen .mode-switch button {
+    min-height: clamp(20px, 6vw, 28px);
+    padding: 0 clamp(8px, 2.4vw, 12px);
+    border-radius: 999px;
+    font-size: clamp(8px, 2.25vw, 11px);
+    font-weight: 850;
+  }
+
+  #practiceScreen .thin-progress {
+    grid-column: 1 / -1;
+    order: 4;
+    height: 4px;
+    margin-top: 0;
+    border-radius: 999px;
+  }
+
+  #practiceScreen .practice-meta {
+    grid-row: 2;
+    align-self: end;
+    justify-self: center;
+    display: block;
+    margin: 2px auto -2px;
+    padding: 0 1px !important;
+    position: relative;
+    z-index: 2;
+  }
+
+  #practiceScreen .practice-meta strong,
+  #practiceScreen .practice-meta span {
+    display: block;
+  }
+
+  #practiceScreen .practice-meta strong {
+    font-size: clamp(11px, 3.2vw, 14px);
+    line-height: 1.2;
+  }
+
+  #practiceScreen .practice-meta span {
+    margin-top: 1px;
+    font-size: clamp(8px, 2.2vw, 11px);
+    line-height: 1;
+  }
+
+  #practiceScreen .practice-layout {
+    grid-row: 3;
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 6px;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  #practiceScreen .exercise-card {
+    min-height: 0;
+    height: 100%;
+    justify-content: start;
+    border: 1px solid rgba(203, 213, 225, 0.9);
+    border-radius: 9px;
+    padding: 8px 7px 10px;
+    box-shadow: 0 5px 14px rgba(15, 23, 42, 0.06);
+  }
+
+  #practiceScreen .exercise-card::before,
+  #practiceScreen .exercise-card::after {
+    display: none;
+  }
+
+  #practiceScreen .stage-pill {
+    padding: clamp(4px, 1.2vw, 6px) clamp(9px, 2.6vw, 13px);
+    border-radius: 999px;
+    font-size: clamp(8px, 2.2vw, 11px);
+    box-shadow: none;
+  }
+
+  #practiceScreen .exercise-card > p {
+    margin: 7px 0 0;
+    font-size: clamp(8px, 2.15vw, 11px);
+    font-weight: 600;
+    line-height: 1.25;
+  }
+
+  #practiceScreen .exercise-card h1,
+  #practiceScreen .exercise-card h1.practice-prompt--compact,
+  #practiceScreen .exercise-card h1.practice-prompt--small,
+  #practiceScreen .exercise-card h1.practice-prompt--tiny {
+    max-width: 100%;
+    margin: 8px auto 9px;
+    font-size: clamp(20px, 7.4vw, 32px);
+    line-height: 1.08;
+  }
+
+  #practiceScreen .slot-row {
+    width: 100%;
+    max-width: min(78%, 300px);
+    margin: 0 auto;
+    gap: 4px;
+  }
+
+  #practiceScreen .answer-slot {
+    width: 100%;
+    min-width: 0;
+  }
+
+  #practiceScreen .slot-line {
+    min-height: clamp(40px, 10vw, 58px);
+    padding: 5px 7px 4px;
+    border-bottom-width: 3px;
+    border-radius: 5px 5px 0 0;
+  }
+
+  #practiceScreen .answer-slot input {
+    width: 100%;
+    font-size: clamp(10px, 3.1vw, 16px);
+    font-weight: 800;
+  }
+
+  #practiceScreen .answer-slot input::placeholder {
+    color: rgba(106, 114, 130, 0.56);
+  }
+
+  #practiceScreen .answer-slot strong {
+    font-size: clamp(16px, 5vw, 24px);
+  }
+
+  #practiceScreen .answer-slot > span,
+  #practiceScreen .slot-progress-text {
+    margin-top: 3px;
+    font-size: clamp(7px, 2vw, 10px) !important;
+    line-height: 1;
+  }
+
+  #practiceScreen .memory-panel {
+    display: block;
+    min-height: clamp(78px, 22vw, 108px);
+    height: auto;
+    border: 1px solid rgba(203, 213, 225, 0.9);
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: #ffffff;
+    box-shadow: 0 5px 14px rgba(15, 23, 42, 0.05);
+    overflow: hidden;
+  }
+
+  #practiceScreen .memory-panel::before {
+    width: 5px;
+  }
+
+  #practiceScreen .memory-panel::after {
+    display: none;
+  }
+
+  #practiceScreen .memory-panel .eyebrow {
+    margin: 0 0 3px;
+    color: #059669;
+    font-size: clamp(7px, 2vw, 10px);
+    font-weight: 950;
+    text-transform: uppercase;
+  }
+
+  #practiceScreen .memory-panel strong {
+    min-height: 0;
+    font-size: clamp(19px, 6vw, 28px);
+    line-height: 1;
+  }
+
+  #practiceScreen .memory-panel span {
+    margin-top: 2px;
+    font-size: clamp(8px, 2.25vw, 11px);
+    font-weight: 900;
+  }
+
+  #practiceScreen .memory-panel p:not(.eyebrow) {
+    margin: 5px 0 0;
+    font-size: clamp(8px, 2.25vw, 11px);
+    line-height: 1.35;
+  }
+
+  #practiceScreen .memory-panel div {
+    display: none;
+  }
+
+  #practiceScreen .function-dock {
+    position: fixed;
+    left: 50%;
+    right: auto;
+    bottom: max(4px, env(safe-area-inset-bottom));
+    z-index: 80;
+    width: min(calc(100vw - 10px), 390px);
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+    margin: 0;
+    padding: 6px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 -8px 18px rgba(15, 23, 42, 0.08);
+    transform: translateX(-50%);
+  }
+
+  #practiceScreen .function-dock button,
+  #practiceScreen .function-dock button:not(.primary) {
+    width: 100%;
+    min-width: 0;
+    min-height: clamp(24px, 10vw, 40px);
+    height: clamp(24px, 10vw, 40px);
+    padding: 0 6px;
+    border-width: 1px;
+    border-radius: 6px;
+    font-size: clamp(8px, 2.7vw, 12px);
+    font-weight: 850;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  }
+
+  #practiceScreen .function-dock span {
+    margin-right: 0;
+    font-size: clamp(8px, 2.7vw, 12px);
+    line-height: 1;
+  }
+
+  #practiceScreen .function-dock #prevBtn {
+    background: #f8fafc;
+    border-color: #dbeafe;
+    color: #94a3b8;
+  }
+
+  #practiceScreen .function-dock #playBtn {
+    background: #eff8ff;
+    border-color: #bfdbfe;
+    color: #0f172a;
+  }
+
+  #practiceScreen .function-dock #slowBtn {
+    background: #ecfdf5;
+    border-color: #bbf7d0;
+    color: #0f172a;
+  }
+
+  #practiceScreen .function-dock #saveBtn {
+    background: #fff7ed;
+    border-color: #fed7aa;
+    color: #0f172a;
+  }
+
+  #practiceScreen .function-dock #answerBtn {
+    background: #f5edff;
+    border-color: #d8b4fe;
+    color: #0f172a;
+  }
+
+  #practiceScreen .function-dock #nextBtn,
+  #practiceScreen .function-dock button.primary {
+    grid-column: 1 / -1;
+    min-height: clamp(26px, 10.4vw, 42px);
+    height: clamp(26px, 10.4vw, 42px);
+    border-radius: 6px;
+    background: #16c96f;
+    border-color: #11b864;
+    color: #ffffff;
+    box-shadow: 0 4px 10px rgba(22, 201, 111, 0.25);
+  }
+}

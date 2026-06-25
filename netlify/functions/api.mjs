@@ -88,6 +88,11 @@ async function ensureSchema() {
         avatar_url TEXT,
         is_premium BOOLEAN NOT NULL DEFAULT FALSE,
         premium_until TIMESTAMPTZ,
+        daily_reminder_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        daily_reminder_last_sent_on DATE,
+        email_verified_at TIMESTAMPTZ,
+        email_verification_code_hash TEXT,
+        email_verification_expires_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         last_login_at TIMESTAMPTZ
@@ -97,6 +102,11 @@ async function ensureSchema() {
     await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;");
     await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_premium BOOLEAN NOT NULL DEFAULT FALSE;");
     await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_until TIMESTAMPTZ;");
+    await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_reminder_enabled BOOLEAN NOT NULL DEFAULT TRUE;");
+    await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_reminder_last_sent_on DATE;");
+    await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;");
+    await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_code_hash TEXT;");
+    await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMPTZ;");
     await db.query(`
       CREATE TABLE IF NOT EXISTS payment_orders (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -210,6 +220,9 @@ function publicUser(row) {
     isPremium,
     plan: isPremium ? "PREMIUM" : "FREE",
     premiumUntil: row.premium_until || null,
+    dailyReminderEnabled: row.daily_reminder_enabled !== false,
+    emailVerified: Boolean(row.email_verified_at),
+    emailVerifiedAt: row.email_verified_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastLoginAt: row.last_login_at,
@@ -362,7 +375,7 @@ async function register(body) {
     const result = await query(
       `INSERT INTO users (full_name, email, password_hash)
        VALUES ($1, $2, $3)
-       RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at`,
+       RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, daily_reminder_enabled, email_verified_at, created_at, updated_at, last_login_at`,
       [fullName, email, hashPassword(password)],
     );
     return json({ user: publicUser(result.rows[0]) });
@@ -384,7 +397,7 @@ async function login(body) {
   const updated = await query(
     `UPDATE users SET last_login_at = NOW(), updated_at = NOW()
      WHERE id = $1
-     RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at`,
+     RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, daily_reminder_enabled, email_verified_at, created_at, updated_at, last_login_at`,
     [user.id],
   );
   return json({ user: publicUser(updated.rows[0]) });
@@ -399,6 +412,7 @@ async function updateOwnProfile(req, id, body) {
   const email = String(body.email || "").trim().toLowerCase();
   const currentLevel = String(body.currentLevel || "HSK2").trim().toUpperCase();
   const avatarUrl = String(body.avatarUrl || "").trim();
+  const dailyReminderEnabled = body.dailyReminderEnabled !== false;
   if (fullName.length < 2) throw apiError("Vui lòng nhập họ và tên.", 400);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw apiError("Email không hợp lệ.", 400);
   if (avatarUrl && !avatarUrl.startsWith("data:image/") && !/^https?:\/\//i.test(avatarUrl) && !avatarUrl.startsWith("assets/")) {
@@ -411,10 +425,18 @@ async function updateOwnProfile(req, id, body) {
   try {
     const result = await query(
       `UPDATE users
-       SET full_name = $1, email = $2, current_level = $3, avatar_url = $4, updated_at = NOW()
-       WHERE id = $5
-       RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at`,
-      [fullName, email, currentLevel, avatarUrl || null, id],
+       SET full_name = $1,
+           email = $2,
+           current_level = $3,
+           avatar_url = $4,
+           daily_reminder_enabled = $5,
+           email_verified_at = CASE WHEN email = $2 THEN email_verified_at ELSE NULL END,
+           email_verification_code_hash = CASE WHEN email = $2 THEN email_verification_code_hash ELSE NULL END,
+           email_verification_expires_at = CASE WHEN email = $2 THEN email_verification_expires_at ELSE NULL END,
+           updated_at = NOW()
+       WHERE id = $6
+       RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, daily_reminder_enabled, email_verified_at, created_at, updated_at, last_login_at`,
+      [fullName, email, currentLevel, avatarUrl || null, dailyReminderEnabled, id],
     );
     if (!result.rows[0]) throw apiError("Không tìm thấy tài khoản.", 404);
     return json({ user: publicUser(result.rows[0]) });
@@ -434,17 +456,168 @@ async function updateOwnAvatar(req, id, body) {
     `UPDATE users
      SET avatar_url = $1, updated_at = NOW()
      WHERE id = $2
-     RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at`,
+     RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, daily_reminder_enabled, email_verified_at, created_at, updated_at, last_login_at`,
     [avatarUrl, id],
   );
   if (!result.rows[0]) throw apiError("Không tìm thấy tài khoản.", 404);
   return json({ user: publicUser(result.rows[0]), avatarUrl });
 }
 
+async function changeOwnPassword(req, id, body) {
+  const requesterId = req.headers.get("x-user-id");
+  if (!requesterId || requesterId !== id) {
+    throw apiError("Bạn không có quyền đổi mật khẩu tài khoản này.", 403);
+  }
+
+  const currentPassword = String(body.currentPassword || "");
+  const newPassword = String(body.newPassword || "");
+  const confirmPassword = String(body.confirmPassword || "");
+
+  if (!currentPassword) throw apiError("Vui lòng nhập mật khẩu hiện tại.", 400);
+  if (newPassword.length < 6) throw apiError("Mật khẩu mới cần tối thiểu 6 ký tự.", 400);
+  if (newPassword !== confirmPassword) throw apiError("Mật khẩu xác nhận không khớp.", 400);
+  if (currentPassword === newPassword) throw apiError("Mật khẩu mới cần khác mật khẩu hiện tại.", 400);
+
+  const current = await query("SELECT id, password_hash FROM users WHERE id = $1", [id]);
+  const user = current.rows[0];
+  if (!user) throw apiError("Không tìm thấy tài khoản.", 404);
+  if (!verifyPassword(currentPassword, user.password_hash)) {
+    throw apiError("Mật khẩu hiện tại không đúng.", 401);
+  }
+
+  await query(
+    "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2",
+    [hashPassword(newPassword), id],
+  );
+  return json({ ok: true });
+}
+
+async function updateOwnReminderSettings(req, id, body) {
+  const requesterId = req.headers.get("x-user-id");
+  if (!requesterId || requesterId !== id) {
+    throw apiError("Bạn không có quyền cập nhật thông báo tài khoản này.", 403);
+  }
+
+  const enabled = body.enabled !== false;
+  const result = await query(
+    `UPDATE users
+     SET daily_reminder_enabled = $1, updated_at = NOW()
+     WHERE id = $2
+     RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, daily_reminder_enabled, email_verified_at, created_at, updated_at, last_login_at`,
+    [enabled, id],
+  );
+  if (!result.rows[0]) throw apiError("Không tìm thấy tài khoản.", 404);
+  return json({ user: publicUser(result.rows[0]) });
+}
+
+function emailVerificationHash(userId, email, code) {
+  return crypto
+    .createHash("sha256")
+    .update(`${userId}:${email}:${code}:${env("EMAIL_VERIFICATION_SECRET") || "huamei-email-verification"}`)
+    .digest("hex");
+}
+
+async function sendVerificationEmail(email, code) {
+  const resendApiKey = env("RESEND_API_KEY");
+  const from = env("EMAIL_FROM") || "HuaMei <no-reply@huamei.vn>";
+  if (!resendApiKey) {
+    console.log(`[email-verification] ${email}: ${code}`);
+    return "dev";
+  }
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to: email,
+      subject: "Ma xac minh email HuaMei",
+      html: `
+        <div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a">
+          <h2>Ma xac minh email HuaMei</h2>
+          <p>Nhap ma ben duoi de xac minh email cua ban:</p>
+          <p style="font-size:28px;font-weight:800;letter-spacing:6px">${code}</p>
+          <p>Ma co hieu luc trong 10 phut.</p>
+        </div>
+      `,
+    }),
+  });
+  if (!response.ok) throw apiError("Khong the gui email xac minh. Vui long thu lai sau.", 502);
+  return "sent";
+}
+
+async function sendEmailVerificationCode(req, id) {
+  const requesterId = req.headers.get("x-user-id");
+  if (!requesterId || requesterId !== id) {
+    throw apiError("Ban khong co quyen xac minh email tai khoan nay.", 403);
+  }
+  const current = await query("SELECT id, email, email_verified_at FROM users WHERE id = $1", [id]);
+  const user = current.rows[0];
+  if (!user) throw apiError("Khong tim thay tai khoan.", 404);
+  if (user.email_verified_at) return json({ ok: true, alreadyVerified: true });
+
+  const code = String(crypto.randomInt(100000, 1000000));
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  await query(
+    `UPDATE users
+     SET email_verification_code_hash = $1,
+         email_verification_expires_at = $2,
+         updated_at = NOW()
+     WHERE id = $3`,
+    [emailVerificationHash(id, user.email, code), expiresAt.toISOString(), id],
+  );
+  const delivery = await sendVerificationEmail(user.email, code);
+  return json({
+    ok: true,
+    delivery,
+    expiresAt: expiresAt.toISOString(),
+    devCode: delivery === "dev" && env("NODE_ENV") !== "production" ? code : undefined,
+  });
+}
+
+async function confirmEmailVerificationCode(req, id, body) {
+  const requesterId = req.headers.get("x-user-id");
+  if (!requesterId || requesterId !== id) {
+    throw apiError("Ban khong co quyen xac minh email tai khoan nay.", 403);
+  }
+  const code = String(body.code || "").replace(/\D/g, "");
+  if (!/^\d{6}$/.test(code)) throw apiError("Ma xac minh gom 6 chu so.", 400);
+
+  const current = await query(
+    `SELECT id, email, email_verification_code_hash, email_verification_expires_at
+     FROM users
+     WHERE id = $1`,
+    [id],
+  );
+  const user = current.rows[0];
+  if (!user) throw apiError("Khong tim thay tai khoan.", 404);
+  const expiresAt = user.email_verification_expires_at ? new Date(user.email_verification_expires_at) : null;
+  if (!user.email_verification_code_hash || !expiresAt || expiresAt.getTime() < Date.now()) {
+    throw apiError("Ma xac minh da het han. Vui long gui lai ma moi.", 400);
+  }
+  if (emailVerificationHash(id, user.email, code) !== user.email_verification_code_hash) {
+    throw apiError("Ma xac minh khong dung.", 400);
+  }
+
+  const updated = await query(
+    `UPDATE users
+     SET email_verified_at = NOW(),
+         email_verification_code_hash = NULL,
+         email_verification_expires_at = NULL,
+         updated_at = NOW()
+     WHERE id = $1
+     RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, daily_reminder_enabled, email_verified_at, created_at, updated_at, last_login_at`,
+    [id],
+  );
+  return json({ ok: true, user: publicUser(updated.rows[0]) });
+}
+
 async function listUsers(req) {
   await assertAdmin(req);
   const result = await query(
-    `SELECT id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at
+    `SELECT id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, daily_reminder_enabled, created_at, updated_at, last_login_at
      FROM users
      ORDER BY created_at DESC`,
   );
@@ -482,7 +655,7 @@ async function createUser(req, body) {
     const result = await query(
       `INSERT INTO users (full_name, email, password_hash, role, is_active, current_level, is_premium, premium_until)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at`,
+       RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, daily_reminder_enabled, email_verified_at, created_at, updated_at, last_login_at`,
       [fullName, email, hashPassword(password), role || "student", isActive, currentLevel, isPremium, premiumUntil],
     );
     return json({ user: publicUser(result.rows[0]) });
@@ -504,7 +677,7 @@ async function updateUser(req, id, body) {
     `UPDATE users
      SET full_name = $1, email = $2, role = $3, is_active = $4, current_level = $5, updated_at = NOW()
      WHERE id = $6
-     RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, created_at, updated_at, last_login_at`,
+     RETURNING id, full_name, email, role, is_active, current_level, avatar_url, is_premium, premium_until, daily_reminder_enabled, email_verified_at, created_at, updated_at, last_login_at`,
     [fullName, email, role, isActive, currentLevel, id],
   );
   if (!result.rows[0]) throw apiError("Không tìm thấy user.", 404);
@@ -1179,6 +1352,14 @@ async function route(req) {
   if (req.method === "POST" && path === "/api/login") return login(body);
   const ownAvatarMatch = path.match(/^\/api\/users\/([^/]+)\/avatar$/);
   if (ownAvatarMatch && req.method === "PATCH") return updateOwnAvatar(req, decodeURIComponent(ownAvatarMatch[1]), body);
+  const ownPasswordMatch = path.match(/^\/api\/users\/([^/]+)\/password$/);
+  if (ownPasswordMatch && req.method === "PATCH") return changeOwnPassword(req, decodeURIComponent(ownPasswordMatch[1]), body);
+  const emailVerificationSendMatch = path.match(/^\/api\/users\/([^/]+)\/email-verification\/send$/);
+  if (emailVerificationSendMatch && req.method === "POST") return sendEmailVerificationCode(req, decodeURIComponent(emailVerificationSendMatch[1]));
+  const emailVerificationConfirmMatch = path.match(/^\/api\/users\/([^/]+)\/email-verification\/confirm$/);
+  if (emailVerificationConfirmMatch && req.method === "POST") return confirmEmailVerificationCode(req, decodeURIComponent(emailVerificationConfirmMatch[1]), body);
+  const ownReminderMatch = path.match(/^\/api\/users\/([^/]+)\/reminder-settings$/);
+  if (ownReminderMatch && req.method === "PATCH") return updateOwnReminderSettings(req, decodeURIComponent(ownReminderMatch[1]), body);
   const ownProfileMatch = path.match(/^\/api\/users\/([^/]+)\/profile$/);
   if (ownProfileMatch && req.method === "PATCH") return updateOwnProfile(req, decodeURIComponent(ownProfileMatch[1]), body);
   if (req.method === "GET" && path === "/api/admin/users") return listUsers(req);

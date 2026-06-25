@@ -436,6 +436,12 @@ const state = {
   vocabSearchQuery: "",
   vocabFilterTab: "all",
   user: JSON.parse(localStorage.getItem("v2-user") || "null"),
+  activities: JSON.parse(localStorage.getItem("v2-activities") || "[]"),
+  emailVerificationCode: "",
+  emailVerificationStatus: "",
+  emailVerificationFormOpen: false,
+  emailVerificationSending: false,
+  emailVerificationConfirming: false,
   adminUsers: [],
   adminStatus: "",
   adminTab: "users",
@@ -2223,9 +2229,145 @@ function saveState() {
   localStorage.setItem("v2-wrong", JSON.stringify([...state.wrong]));
   localStorage.setItem("v2-saved", JSON.stringify([...state.saved]));
   localStorage.setItem("v2-completed", JSON.stringify([...state.completed]));
+  localStorage.setItem("v2-activities", JSON.stringify((state.activities || []).slice(0, 30)));
   if (state.user) localStorage.setItem("v2-user", JSON.stringify(state.user));
   else localStorage.removeItem("v2-user");
   localStorage.removeItem("v2-admin-key");
+}
+
+function activityUserKey() {
+  return state.user?.id || state.user?.email || "guest";
+}
+
+function recordUserActivity(type, detail = {}) {
+  const now = new Date().toISOString();
+  const activity = {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    type,
+    userKey: activityUserKey(),
+    createdAt: now,
+    ...detail,
+  };
+  state.activities = [activity, ...(state.activities || [])].slice(0, 30);
+  saveState();
+  refreshRecentActivitiesPanel();
+  return activity;
+}
+
+function currentUserActivities(limit = 5) {
+  const key = activityUserKey();
+  return (state.activities || [])
+    .filter((activity) => !activity.userKey || activity.userKey === key)
+    .slice(0, limit);
+}
+
+function formatActivityTime(value) {
+  const date = new Date(value || Date.now());
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+  }).format(date);
+}
+
+function getActivityView(activity, isVi) {
+  const labels = {
+    profile: [isVi ? "Cập nhật hồ sơ" : "Profile updated", isVi ? "Đã thay đổi thông tin cá nhân" : "Personal information changed", "green"],
+    avatar: [isVi ? "Cập nhật ảnh đại diện" : "Avatar updated", isVi ? "Đã thay đổi ảnh hồ sơ" : "Profile photo changed", "green"],
+    password: [isVi ? "Đổi mật khẩu" : "Password changed", isVi ? "Tài khoản được bảo mật hơn" : "Account security improved", "green"],
+    reminder_on: [isVi ? "Bật nhắc học" : "Reminder enabled", isVi ? "Nhận email nhắc học lúc 7h sáng" : "Daily 7 AM email reminder enabled", "yellow"],
+    reminder_off: [isVi ? "Tắt nhắc học" : "Reminder disabled", isVi ? "Đã tắt email nhắc học hằng ngày" : "Daily reminder email disabled", "yellow"],
+    email_verified: [isVi ? "Xác minh email" : "Email verified", isVi ? "Email tài khoản đã được xác minh" : "Account email has been verified", "green"],
+    save_vocab: [isVi ? "Lưu từ mới" : "Saved new word", activity.hanzi ? `${activity.hanzi} ${activity.meaning || ""}`.trim() : (isVi ? "Đã lưu từ vựng" : "Vocabulary saved"), "purple"],
+    complete: [isVi ? "Hoàn thành bài học" : "Lesson completed", activity.title || (isVi ? "Đã hoàn thành một mục luyện tập" : "Completed a practice item"), "green"],
+  };
+  const fallback = [isVi ? "Hoạt động mới" : "New activity", activity.title || "", "purple"];
+  const [title, subtitle, tone] = labels[activity.type] || fallback;
+  return { title, subtitle, tone };
+}
+
+function renderActivityAvatarHTML() {
+  const avatarUrl = getAccountAvatarUrl();
+  const displayName = state.user?.fullName || state.user?.email || "User";
+  return `<img class="activity-avatar" src="${escapeAttr(avatarUrl)}" alt="${escapeAttr(displayName)}" />`;
+}
+
+function renderRecentActivitiesHTML(isVi, updatedLabel, limit = 2) {
+  const activities = currentUserActivities(limit);
+  const list = activities.length ? activities.map((activity) => {
+    const view = getActivityView(activity, isVi);
+    return `
+      <li>
+        ${renderActivityAvatarHTML()}
+        <strong>${escapeHtml(view.title)}${view.subtitle ? `<small>${escapeHtml(view.subtitle)}</small>` : ""}</strong>
+        <em>${escapeHtml(formatActivityTime(activity.createdAt))}</em>
+      </li>
+    `;
+  }).join("") : `
+    <li class="account-activity-empty">
+      <span class="activity-dot activity-dot--green"></span>
+      <strong>${isVi ? "Chưa có hoạt động" : "No activity yet"}<small>${isVi ? "Hoạt động học tập sẽ hiển thị tại đây" : "Learning activity will appear here"}</small></strong>
+      <em>${escapeHtml(updatedLabel)}</em>
+    </li>
+  `;
+  return `<ul>${list}</ul>`;
+}
+
+function refreshRecentActivitiesPanel() {
+  const card = document.querySelector(".account-activity-card");
+  if (!card) return;
+  const body = card.querySelector("ul");
+  if (!body) return;
+  const updatedLabel = state.user?.updatedAt ? formatDateTime(state.user.updatedAt) : formatActivityTime(Date.now());
+  const replacement = document.createElement("div");
+  replacement.innerHTML = renderRecentActivitiesHTML(state.lang === "vi", updatedLabel, 2);
+  body.replaceWith(replacement.firstElementChild);
+}
+
+function showRecentActivitiesDrawer() {
+  const isVi = state.lang === "vi";
+  const existing = document.getElementById("recentActivitiesDrawer");
+  if (existing) existing.remove();
+
+  const updatedLabel = state.user?.updatedAt ? formatDateTime(state.user.updatedAt) : formatActivityTime(Date.now());
+  const drawer = document.createElement("div");
+  drawer.id = "recentActivitiesDrawer";
+  drawer.className = "recent-activities-drawer-overlay";
+  drawer.innerHTML = `
+    <aside class="recent-activities-drawer" role="dialog" aria-modal="true" aria-label="${isVi ? "Tất cả hoạt động gần đây" : "All recent activities"}">
+      <header class="recent-activities-drawer-header">
+        <div>
+          <span>${isVi ? "Hồ sơ cá nhân" : "Profile"}</span>
+          <h2>${isVi ? "Hoạt động gần đây" : "Recent activity"}</h2>
+        </div>
+        <button type="button" class="recent-activities-drawer-close" data-close-activities-drawer aria-label="${isVi ? "Đóng" : "Close"}">&times;</button>
+      </header>
+      <div class="recent-activities-drawer-body">
+        ${renderRecentActivitiesHTML(isVi, updatedLabel, 30)}
+      </div>
+    </aside>
+  `;
+  document.body.appendChild(drawer);
+  requestAnimationFrame(() => drawer.classList.add("open"));
+
+  const closeDrawer = () => {
+    drawer.classList.remove("open");
+    drawer.classList.add("closing");
+    setTimeout(() => drawer.remove(), 220);
+  };
+
+  drawer.querySelector("[data-close-activities-drawer]")?.addEventListener("click", closeDrawer);
+  drawer.addEventListener("click", (event) => {
+    if (event.target === drawer) closeDrawer();
+  });
+  drawer.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeDrawer();
+  });
+  drawer.tabIndex = -1;
+  drawer.focus();
 }
 
 function isAdminUser() {
@@ -2301,6 +2443,24 @@ function navigatePrimaryTab(target) {
 
   scrollAppToTop();
   $("#mobileMenu")?.classList.remove("active");
+}
+
+function openDailyTopicFromHome(themeId) {
+  const theme = dailyThemes.find((item) => item.id === themeId);
+  if (!theme) return;
+  if (isDailyThemeLockedForUser(theme.id)) {
+    promptUpgradeLocked();
+    return;
+  }
+  state.fromRoadmap = false;
+  state.module = "daily";
+  state.hskPendingLessonId = "";
+  state.hskContentType = "";
+  state.dailyPendingThemeId = theme.id;
+  state.dailyContentType = "";
+  renderCourse();
+  setScreen("course");
+  scrollAppToTop();
 }
 
 function setScreen(name) {
@@ -3084,6 +3244,227 @@ function showModal(type) {
   };
 }
 
+function showEmailVerificationModal() {
+  if (BACKEND_DISABLED) {
+    showToast(BACKEND_DISABLED_MESSAGE);
+    return;
+  }
+  if (!state.user?.id) {
+    showModal("login");
+    return;
+  }
+  if (state.user.emailVerified === true) {
+    showToast(state.lang === "vi" ? "Email đã được xác minh." : "Email is already verified.");
+    return;
+  }
+  document.getElementById("authModal")?.remove();
+  const isVi = state.lang === "vi";
+  const email = state.user.email || "";
+  const modalDiv = document.createElement("div");
+  modalDiv.id = "authModal";
+  modalDiv.className = "auth-modal-overlay";
+  modalDiv.innerHTML = `
+    <div class="auth-modal-content auth-modal-content--email-verify">
+      <button class="auth-modal-close" id="closeAuthModal" type="button">&times;</button>
+      <div class="auth-modal-logo">验</div>
+      <h2>${isVi ? "Xác minh email" : "Email verification"}</h2>
+      <p class="auth-modal-sub">${isVi ? `Mã xác minh sẽ được gửi tới ${escapeHtml(email)}` : `A verification code will be sent to ${escapeHtml(email)}`}</p>
+
+      <form id="emailVerificationForm" onsubmit="event.preventDefault();">
+        <div class="form-group">
+          <label for="emailVerificationCodeModalInput">${isVi ? "Mã xác minh" : "Verification code"}</label>
+          <input type="text" id="emailVerificationCodeModalInput" inputmode="numeric" maxlength="6" placeholder="${isVi ? "Nhập mã 6 số" : "Enter 6-digit code"}" value="${escapeAttr(state.emailVerificationCode)}" required />
+        </div>
+        <p class="auth-form-message" id="emailVerificationMessage" role="status">${escapeHtml(state.emailVerificationStatus || "")}</p>
+        <div class="email-verification-modal-actions">
+          <button type="button" class="btn-auth-secondary" id="emailVerificationSendBtn">${isVi ? "Gửi mã" : "Send code"}</button>
+          <button type="submit" class="btn-auth-submit" id="emailVerificationConfirmBtn">${isVi ? "Xác minh" : "Verify"}</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(modalDiv);
+  const closeModal = () => modalDiv.remove();
+  const message = document.getElementById("emailVerificationMessage");
+  const codeInput = document.getElementById("emailVerificationCodeModalInput");
+  const sendBtn = document.getElementById("emailVerificationSendBtn");
+  const confirmBtn = document.getElementById("emailVerificationConfirmBtn");
+
+  document.getElementById("closeAuthModal").onclick = closeModal;
+  modalDiv.onclick = (event) => { if (event.target === modalDiv) closeModal(); };
+  codeInput?.focus();
+  codeInput.oninput = () => {
+    state.emailVerificationCode = codeInput.value.replace(/\D/g, "").slice(0, 6);
+    codeInput.value = state.emailVerificationCode;
+  };
+
+  sendBtn.onclick = async () => {
+    sendBtn.disabled = true;
+    message.textContent = isVi ? "Đang gửi mã xác minh..." : "Sending verification code...";
+    message.className = "auth-form-message";
+    try {
+      const data = await apiRequest(`/api/users/${encodeURIComponent(state.user.id)}/email-verification/send`, {
+        method: "POST",
+        headers: { "X-User-Id": state.user.id },
+      });
+      state.emailVerificationStatus = data.alreadyVerified
+        ? (isVi ? "Email đã được xác minh." : "Email is already verified.")
+        : data.delivery === "dev" && data.devCode
+          ? (isVi ? `Đã tạo mã xác minh. Mã dev: ${data.devCode}` : `Verification code created. Dev code: ${data.devCode}`)
+          : (isVi ? "Đã gửi mã xác minh tới email của bạn." : "Verification code sent to your email.");
+      message.textContent = state.emailVerificationStatus;
+      message.classList.add("success");
+    } catch (error) {
+      state.emailVerificationStatus = error.message || (isVi ? "Không thể gửi mã xác minh." : "Could not send verification code.");
+      message.textContent = state.emailVerificationStatus;
+      message.classList.add("error");
+    } finally {
+      sendBtn.disabled = false;
+      renderAccount();
+    }
+  };
+
+  document.getElementById("emailVerificationForm").onsubmit = async (event) => {
+    event.preventDefault();
+    const code = String(state.emailVerificationCode || "").replace(/\D/g, "");
+    message.className = "auth-form-message";
+    if (!/^\d{6}$/.test(code)) {
+      state.emailVerificationStatus = isVi ? "Vui lòng nhập mã gồm 6 chữ số." : "Enter the 6-digit code.";
+      message.textContent = state.emailVerificationStatus;
+      message.classList.add("error");
+      return;
+    }
+    confirmBtn.disabled = true;
+    message.textContent = isVi ? "Đang xác minh mã..." : "Verifying code...";
+    try {
+      const data = await apiRequest(`/api/users/${encodeURIComponent(state.user.id)}/email-verification/confirm`, {
+        method: "POST",
+        headers: { "X-User-Id": state.user.id },
+        body: JSON.stringify({ code }),
+      });
+      if (data.user) state.user = { ...state.user, ...data.user };
+      state.emailVerificationCode = "";
+      state.emailVerificationFormOpen = false;
+      state.emailVerificationStatus = isVi ? "Xác minh email thành công." : "Email verified successfully.";
+      saveState();
+      recordUserActivity("email_verified");
+      renderAccount();
+      message.textContent = state.emailVerificationStatus;
+      message.classList.add("success");
+      setTimeout(() => modalDiv.remove(), 500);
+    } catch (error) {
+      state.emailVerificationStatus = error.message || (isVi ? "Mã xác minh không hợp lệ." : "Invalid verification code.");
+      message.textContent = state.emailVerificationStatus;
+      message.classList.add("error");
+    } finally {
+      confirmBtn.disabled = false;
+    }
+  };
+}
+
+function showChangePasswordModal() {
+  if (BACKEND_DISABLED) {
+    showToast(BACKEND_DISABLED_MESSAGE);
+    return;
+  }
+  if (!state.user?.id) {
+    showModal("login");
+    return;
+  }
+
+  const isVi = state.lang === "vi";
+  const existing = document.getElementById("changePasswordModal");
+  if (existing) existing.remove();
+
+  const modalDiv = document.createElement("div");
+  modalDiv.id = "changePasswordModal";
+  modalDiv.className = "auth-modal-overlay change-password-overlay";
+  modalDiv.innerHTML = `
+    <div class="auth-modal-content change-password-modal">
+      <button class="auth-modal-close" id="closeChangePasswordModal" type="button">&times;</button>
+      <div class="auth-modal-logo change-password-logo">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="5" y="11" width="14" height="10" rx="2" />
+          <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+        </svg>
+      </div>
+      <h2>${isVi ? "Đổi mật khẩu" : "Change password"}</h2>
+      <p class="auth-modal-sub">${isVi ? "Nhập mật khẩu hiện tại để bảo vệ tài khoản của bạn." : "Enter your current password to keep your account protected."}</p>
+
+      <form id="changePasswordForm" class="auth-form change-password-form">
+        <div class="form-group">
+          <label for="currentPasswordInput">${isVi ? "Mật khẩu hiện tại" : "Current password"}</label>
+          <input type="password" id="currentPasswordInput" autocomplete="current-password" required />
+        </div>
+        <div class="form-group">
+          <label for="newPasswordInput">${isVi ? "Mật khẩu mới" : "New password"}</label>
+          <input type="password" id="newPasswordInput" autocomplete="new-password" minlength="6" required />
+          <small class="change-password-hint">${isVi ? "Tối thiểu 6 ký tự." : "At least 6 characters."}</small>
+        </div>
+        <div class="form-group">
+          <label for="confirmPasswordInput">${isVi ? "Nhập lại mật khẩu mới" : "Confirm new password"}</label>
+          <input type="password" id="confirmPasswordInput" autocomplete="new-password" minlength="6" required />
+        </div>
+        <p class="auth-form-message" id="changePasswordMessage" role="status"></p>
+        <button type="submit" class="btn-auth-submit">${isVi ? "Cập nhật mật khẩu" : "Update password"}</button>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(modalDiv);
+
+  const closeModal = () => modalDiv.remove();
+  modalDiv.querySelector("#closeChangePasswordModal").onclick = closeModal;
+  modalDiv.onclick = (event) => {
+    if (event.target === modalDiv) closeModal();
+  };
+
+  modalDiv.querySelector("#changePasswordForm").onsubmit = async (event) => {
+    event.preventDefault();
+    const message = modalDiv.querySelector("#changePasswordMessage");
+    const submitBtn = modalDiv.querySelector(".btn-auth-submit");
+    const currentPassword = modalDiv.querySelector("#currentPasswordInput").value;
+    const newPassword = modalDiv.querySelector("#newPasswordInput").value;
+    const confirmPassword = modalDiv.querySelector("#confirmPasswordInput").value;
+
+    message.textContent = "";
+    message.className = "auth-form-message";
+    if (newPassword !== confirmPassword) {
+      message.textContent = isVi ? "Mật khẩu xác nhận không khớp." : "The confirmation password does not match.";
+      message.classList.add("error");
+      return;
+    }
+    if (currentPassword === newPassword) {
+      message.textContent = isVi ? "Mật khẩu mới cần khác mật khẩu hiện tại." : "The new password must be different from the current password.";
+      message.classList.add("error");
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = isVi ? "Đang cập nhật..." : "Updating...";
+
+    try {
+      await apiRequest(`/api/users/${encodeURIComponent(state.user.id)}/password`, {
+        method: "PATCH",
+        headers: { "X-User-Id": state.user.id },
+        body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),
+      });
+      message.textContent = isVi ? "Đã đổi mật khẩu thành công." : "Password changed successfully.";
+      message.classList.add("success");
+      recordUserActivity("password");
+      showToast(isVi ? "Đã đổi mật khẩu thành công" : "Password changed successfully");
+      setTimeout(closeModal, 650);
+    } catch (error) {
+      message.textContent = error.message || (isVi ? "Không thể đổi mật khẩu." : "Could not change password.");
+      message.classList.add("error");
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = isVi ? "Cập nhật mật khẩu" : "Update password";
+    }
+  };
+}
+
 function showAdminCreateAccountModal() {
   const isVi = state.lang === "vi";
   const existing = document.getElementById("adminCreateAccountModal");
@@ -3316,6 +3697,101 @@ async function persistAccountProfile() {
   return data;
 }
 
+async function persistDailyReminderSetting(enabled) {
+  if (BACKEND_DISABLED || !state.user?.id) return null;
+  const data = await apiRequest(`/api/users/${encodeURIComponent(state.user.id)}/profile`, {
+    method: "PATCH",
+    headers: { "X-User-Id": state.user.id },
+    body: JSON.stringify({
+      fullName: state.user.fullName,
+      email: state.user.email,
+      currentLevel: state.user.currentLevel || state.level || "HSK2",
+      avatarUrl: state.user.avatarUrl || "",
+      dailyReminderEnabled: enabled,
+    }),
+  });
+  if (data.user) {
+    state.user = { ...state.user, ...data.user };
+    saveState();
+  }
+  return data;
+}
+
+async function sendAccountEmailVerificationCode() {
+  if (BACKEND_DISABLED) {
+    showToast(BACKEND_DISABLED_MESSAGE);
+    return;
+  }
+  if (!state.user?.id) {
+    showModal("login");
+    return;
+  }
+  const isVi = state.lang === "vi";
+  state.emailVerificationFormOpen = true;
+  state.emailVerificationSending = true;
+  state.emailVerificationStatus = isVi ? "Đang gửi mã xác minh..." : "Sending verification code...";
+  renderAccount();
+  try {
+    const data = await apiRequest(`/api/users/${encodeURIComponent(state.user.id)}/email-verification/send`, {
+      method: "POST",
+      headers: { "X-User-Id": state.user.id },
+    });
+    state.emailVerificationStatus = data.alreadyVerified
+      ? (isVi ? "Email đã được xác minh." : "Email is already verified.")
+      : data.delivery === "dev" && data.devCode
+        ? (isVi ? `Đã tạo mã xác minh. Mã dev: ${data.devCode}` : `Verification code created. Dev code: ${data.devCode}`)
+        : (isVi ? "Đã gửi mã xác minh tới email của bạn." : "Verification code sent to your email.");
+    showToast(state.emailVerificationStatus);
+  } catch (error) {
+    state.emailVerificationStatus = error.message || (isVi ? "Không thể gửi mã xác minh." : "Could not send verification code.");
+    showToast(state.emailVerificationStatus);
+  } finally {
+    state.emailVerificationSending = false;
+    renderAccount();
+  }
+}
+
+async function confirmAccountEmailVerificationCode() {
+  if (BACKEND_DISABLED) {
+    showToast(BACKEND_DISABLED_MESSAGE);
+    return;
+  }
+  if (!state.user?.id) {
+    showModal("login");
+    return;
+  }
+  const isVi = state.lang === "vi";
+  const code = String(state.emailVerificationCode || "").replace(/\D/g, "");
+  if (!/^\d{6}$/.test(code)) {
+    state.emailVerificationStatus = isVi ? "Vui lòng nhập mã gồm 6 chữ số." : "Enter the 6-digit code.";
+    renderAccount();
+    return;
+  }
+  state.emailVerificationConfirming = true;
+  state.emailVerificationStatus = isVi ? "Đang xác minh mã..." : "Verifying code...";
+  renderAccount();
+  try {
+    const data = await apiRequest(`/api/users/${encodeURIComponent(state.user.id)}/email-verification/confirm`, {
+      method: "POST",
+      headers: { "X-User-Id": state.user.id },
+      body: JSON.stringify({ code }),
+    });
+    if (data.user) state.user = { ...state.user, ...data.user };
+    state.emailVerificationCode = "";
+    state.emailVerificationFormOpen = false;
+    state.emailVerificationStatus = isVi ? "Xác minh email thành công." : "Email verified successfully.";
+    saveState();
+    recordUserActivity("email_verified");
+    showToast(state.emailVerificationStatus);
+  } catch (error) {
+    state.emailVerificationStatus = error.message || (isVi ? "Mã xác minh không hợp lệ." : "Invalid verification code.");
+    showToast(state.emailVerificationStatus);
+  } finally {
+    state.emailVerificationConfirming = false;
+    renderAccount();
+  }
+}
+
 async function updateAccountAvatar(file, input) {
   if (!file) return;
   if (!file.type.startsWith("image/")) {
@@ -3350,6 +3826,7 @@ async function updateAccountAvatar(file, input) {
       if (avatarImg) avatarImg.src = getAccountAvatarUrl();
     }
     renderChrome();
+    recordUserActivity("avatar");
     showToast(state.lang === "vi" ? "Đã cập nhật ảnh đại diện" : "头像已更新");
   } catch (error) {
     if (!BACKEND_DISABLED && state.user) {
@@ -3389,25 +3866,69 @@ function renderAccount() {
   const currentLevel = state.user.currentLevel || state.level || "HSK2";
   const hasPremium = hasPremiumAccess();
   const avatarUrl = getAccountAvatarUrl();
+  const dailyReminderEnabled = state.user.dailyReminderEnabled !== false;
+  const emailVerified = state.user.emailVerified === true;
   const studyDays = Math.max(1, Math.floor((Date.now() - new Date(state.user.createdAt || Date.now()).getTime()) / 86400000) + 1);
   const levelOptions = Object.keys(hskLevels).map((level) => `
     <option value="${level}" ${level === currentLevel ? "selected" : ""}>${formatAccountLevelLabel(level, isVi)}</option>
   `).join("");
 
+  const updatedLabel = state.user.updatedAt ? formatDateTime(state.user.updatedAt) : joinedDate;
+  const levelBadgeLabel = currentLevel.replace(/^HSK/i, "HSK ");
+  const completedCount = state.completed?.size || 7;
+  const savedCount = state.saved?.size || 128;
+  const levelTotalLessons = hskLevels[currentLevel]?.length || 18;
+  const levelCompletedLessons = Math.min(levelTotalLessons, Math.max(1, completedCount));
+  const levelProgressPercent = Math.min(100, Math.max(8, Math.round((levelCompletedLessons / Math.max(1, levelTotalLessons)) * 100)));
+  const securityText = isVi
+    ? "Thông tin của bạn được mã hóa và bảo vệ tuyệt đối."
+    : "Your information is encrypted and protected.";
+  const upgradeBannerTitle = hasPremium
+    ? (isVi ? "Tài khoản HuaMei Pro" : "HuaMei Pro account")
+    : (isVi ? "Nâng cấp HuaMei Pro" : "升级 HuaMei Pro");
+  const upgradeBannerText = hasPremium
+    ? (isVi ? "Bạn đã mở khóa toàn bộ bài học HSK nâng cao, học không giới hạn cùng trợ lý AI và quyền lợi Pro." : "You have unlocked advanced HSK lessons, unlimited learning with the AI assistant, and Pro benefits.")
+    : (isVi ? "Mở khóa tất cả bài học HSK nâng cao, học không giới hạn cùng trợ lý AI và nhận chứng chỉ sau mỗi cấp độ." : "解锁高级 HSK 课程、无限学习 AI 助手，并在每个级别后获得证书。");
+
   setScreenWithDesktopShell("account", `
     <div class="account-layout">
       <header class="account-mobile-header">
-        <button type="button" class="account-mobile-globe" id="accountMobileGlobeBtn" aria-label="${isVi ? "Đổi ngôn ngữ" : "切换语言"}">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        <button type="button" class="account-mobile-back" data-mobile-page-back aria-label="${isVi ? "Quay lại trang chủ" : "返回首页"}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M15 18l-6-6 6-6" />
           </svg>
         </button>
         <h1>${isVi ? "Hồ sơ cá nhân" : "个人资料"}</h1>
         <button type="submit" form="accountForm" class="account-mobile-save">${isVi ? "Lưu" : "保存"}</button>
       </header>
 
+      <section class="account-upgrade-banner account-desktop-only${hasPremium ? " account-upgrade-banner--active" : ""}">
+        <span class="account-upgrade-crown" aria-hidden="true">
+          <img src="assets/account-upgrade-crown.png" alt="" />
+        </span>
+        <div>
+          <h2>${upgradeBannerTitle}</h2>
+          <p>${upgradeBannerText}</p>
+        </div>
+        ${hasPremium ? `
+          <span class="account-upgrade-status">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 2l2.2 4.8 5.3.7-3.8 3.7.9 5.3-4.6-2.5-4.6 2.5.9-5.3L4.5 7.5l5.3-.7L12 2z"/></svg>
+            ${isVi ? "Đã lưu thông tin tài khoản" : "Account details saved"}
+          </span>
+        ` : `
+          <button type="button" class="account-upgrade-btn">
+            ${isVi ? "Nâng cấp ngay" : "立即升级"}
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14" />
+              <path d="M13 6l6 6-6 6" />
+            </svg>
+          </button>
+        `}
+      </section>
+
       <div class="account-panel account-mobile-stack">
         <aside class="account-profile-card">
+          <div class="account-profile-cover" aria-hidden="true"></div>
           <div class="account-avatar-wrap">
             <img id="accountAvatarImage" src="${escapeAttr(avatarUrl)}" alt="${escapeAttr(displayName)}" />
             <input id="accountAvatarInput" type="file" accept="image/*" hidden />
@@ -3420,13 +3941,60 @@ function renderAccount() {
           <h3>${escapeAttr(displayName)}</h3>
           <p>${isVi ? "Học viên tích cực" : "积极学员"}</p>
           <div class="account-badges">
-            <span>${escapeAttr(currentLevel.replace(/^HSK/i, "HSK "))}</span>
+            <span>${escapeAttr(levelBadgeLabel)}</span>
             <span class="account-badge-pro">${hasPremium ? (isVi ? "Pro" : "Pro") : (isVi ? "Gói Free" : "Free 套餐")}</span>
           </div>
+          <div class="account-profile-metrics account-desktop-only">
+            <article>
+              <span class="account-metric-icon account-metric-icon--calendar" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg>
+              </span>
+              <small>${isVi ? "Ngày học" : "Study days"}</small>
+              <strong>${studyDays} ${isVi ? "ngày" : "days"}</strong>
+            </article>
+            <article>
+              <span class="account-metric-icon account-metric-icon--target" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3"/><path d="M22 12h-3"/></svg>
+              </span>
+              <small>${isVi ? "Độ chính xác" : "Accuracy"}</small>
+              <strong>92%</strong>
+            </article>
+            <article>
+              <span class="account-metric-icon account-metric-icon--book" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z"/></svg>
+              </span>
+              <small>${isVi ? "Từ đã luyện" : "Words"}</small>
+              <strong>${savedCount} ${isVi ? "từ" : "words"}</strong>
+            </article>
+          </div>
+          <section class="account-progress-card account-desktop-only">
+            <div>
+              <h4>${isVi ? `Tiến độ ${levelBadgeLabel}` : `${levelBadgeLabel} progress`}</h4>
+              <strong>${levelProgressPercent}%</strong>
+            </div>
+            <span class="account-progress-track"><i style="width:${levelProgressPercent}%"></i></span>
+            <p><span>${isVi ? `Đã học ${levelCompletedLessons} / ${levelTotalLessons} bài` : `${levelCompletedLessons} / ${levelTotalLessons} lessons`}</span><button type="button" data-home-nav="hsk">${isVi ? "Xem chi tiết" : "Details"} ›</button></p>
+          </section>
+          <section class="account-achievements-card account-desktop-only">
+            <div class="account-card-heading">
+              <h4>${isVi ? "Thành tích của bạn" : "Your achievements"}</h4>
+            </div>
+            <div class="account-achievements-grid">
+              <article><img src="assets/content-lock-icon.png" alt="" /><strong>${isVi ? "Chăm chỉ" : "Diligent"}</strong><small>${isVi ? `${studyDays} ngày` : `${studyDays} day streak`}</small></article>
+              <article><img src="assets/review_user_2.png" alt="" /><strong>${isVi ? "Đã học" : "Lessons"}</strong><small>${isVi ? `${completedCount} bài` : `${completedCount} completed lessons`}</small></article>
+              <article><img src="assets/review_user_3.png" alt="" /><strong>${isVi ? "Bộ từ" : "Vocabulary"}</strong><small>${isVi ? `${savedCount} từ vựng` : `${savedCount} saved words`}</small></article>
+            </div>
+          </section>
           <div class="account-streak">
+            <span class="account-streak-calendar" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 2v4" /><path d="M16 2v4" /><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18" /><path d="M8 14h.01" /><path d="M12 14h.01" /><path d="M16 14h.01" /><path d="M8 18h.01" /><path d="M12 18h.01" />
+              </svg>
+            </span>
             <div>
               <small>${isVi ? "Ngày học" : "学习天数"}</small>
               <strong>${studyDays} ${isVi ? "Ngày" : "天"}</strong>
+              <em>${isVi ? "Tiếp tục cố gắng nhé!" : "继续努力！"}</em>
             </div>
             <span class="account-streak-flame" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
@@ -3434,6 +4002,27 @@ function renderAccount() {
               </svg>
             </span>
           </div>
+          <nav class="account-side-nav" aria-label="${isVi ? "Cài đặt tài khoản" : "Account settings"}">
+            <button class="active" type="button">
+              <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0" /><circle cx="12" cy="7" r="4" /></svg>
+              <span>${isVi ? "Thông tin cơ bản" : "Basic info"}</span>
+            </button>
+            <button id="accountChangePasswordBtn" type="button">
+              <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3v8z" /><path d="m9 12 2 2 4-5" /></svg>
+              <span>${isVi ? "Bảo mật tài khoản" : "Security"}</span>
+            </button>
+            <button type="button" id="accountMobileLanguageBtn">
+              <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 7h18s-3 0-3-7" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+              <span>${isVi ? "Cài đặt thông báo" : "Notifications"}</span>
+            </button>
+          </nav>
+          <button class="account-help-card" type="button">
+            <span aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6" /><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3v5Z" /><path d="M3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3v5Z" /></svg>
+            </span>
+            <span><strong>${isVi ? "Cần hỗ trợ?" : "Need help?"}</strong><small>${isVi ? "Liên hệ với chúng tôi" : "Contact us"}</small></span>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+          </button>
         </aside>
 
         ${hasPremium ? "" : `
@@ -3448,65 +4037,129 @@ function renderAccount() {
           </section>
         `}
 
-                ${hasPremium ? "" : `
-          <section class="account-upgrade-banner account-desktop-only">
-            <div>
-              <h2>${isVi ? "Nâng cấp HuaMei Pro" : "升级 HuaMei Pro"}</h2>
-              <p>${isVi ? "Mở khóa tất cả bài học HSK nâng cao, học không giới hạn cùng trợ lý AI và nhận chứng chỉ sau mỗi cấp độ." : "解锁高级 HSK 课程、无限学习 AI 助手，并在每个级别后获得证书。"}</p>
-            </div>
-            <button type="button" class="account-upgrade-btn">
-              ${isVi ? "Nâng cấp ngay" : "立即升级"}
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M5 12h14" />
-                <path d="M13 6l6 6-6 6" />
-              </svg>
-            </button>
-          </section>
-        `}
-
         <section class="account-info-card">
           <div class="account-info-header account-desktop-only">
-            <div>
+            <div class="account-info-title">
               <span class="account-info-icon">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M20 21a8 8 0 0 0-16 0" />
                   <circle cx="12" cy="7" r="4" />
                 </svg>
               </span>
-              <h2>${isVi ? "Thông tin cơ bản" : "基本信息"}</h2>
+              <div>
+                <h2>${isVi ? "Thông tin cơ bản" : "基本信息"}</h2>
+                <p>${isVi ? "Cập nhật thông tin để bảo mật tài khoản" : "Update information to keep your account secure"}</p>
+              </div>
             </div>
-            <em>${isVi ? `Tham gia từ: ${joinedDate}` : `加入时间：${joinedDate}`}</em>
+            <em>
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
+              ${isVi ? `Cập nhật lần cuối: ${updatedLabel}` : `Last updated: ${updatedLabel}`}
+            </em>
           </div>
 
           <form id="accountForm" class="account-form">
             <label>
               <span>${isVi ? "Tên hiển thị" : "显示名称"}</span>
-              <input id="accountNameInput" type="text" value="${escapeAttr(displayName)}" />
+              <span class="account-field">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0" /><circle cx="12" cy="7" r="4" /></svg>
+                <input id="accountNameInput" type="text" value="${escapeAttr(displayName)}" />
+              </span>
             </label>
             <label>
               <span>Email</span>
-              <input id="accountEmailInput" type="email" value="${escapeAttr(email)}" />
+              <span class="account-field">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></svg>
+                <input id="accountEmailInput" type="email" value="${escapeAttr(email)}" />
+              </span>
             </label>
             <label>
               <span>${isVi ? "Cấp độ hiện tại" : "当前等级"}</span>
-              <select id="accountLevelInput">${levelOptions}</select>
+              <span class="account-field account-field--select">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="6" /><path d="M15.5 13.2 17 22l-5-3-5 3 1.5-8.8" /><path d="m10 8 1.4 1.4L14.5 6" /></svg>
+                <select id="accountLevelInput">${levelOptions}</select>
+              </span>
             </label>
             <label>
               <span>${isVi ? "Ngôn ngữ hiển thị" : "显示语言"}</span>
-              <select id="accountLangInput">
-                <option value="vi" ${state.lang === "vi" ? "selected" : ""}>Tiếng Việt</option>
-                <option value="zh" ${state.lang === "zh" ? "selected" : ""}>中文</option>
-              </select>
+              <span class="account-field account-field--select">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M2 12h20" /><path d="M12 2a15 15 0 0 1 0 20" /><path d="M12 2a15 15 0 0 0 0 20" /></svg>
+                <select id="accountLangInput">
+                  <option value="vi" ${state.lang === "vi" ? "selected" : ""}>Tiếng Việt</option>
+                  <option value="zh" ${state.lang === "zh" ? "selected" : ""}>中文</option>
+                </select>
+              </span>
             </label>
+            <div class="account-security-banner">
+              <span class="account-security-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3v8z" /><path d="m9 12 2 2 4-5" /></svg>
+              </span>
+              <span><strong>${isVi ? "Bảo mật tài khoản" : "Account security"}</strong><small>${securityText}</small></span>
+              <span class="account-security-lock" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="78" height="78" fill="currentColor"><path d="M17 9V7A5 5 0 0 0 7 7v2a3 3 0 0 0-2 2.83V19a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-7.17A3 3 0 0 0 17 9Zm-8 0V7a3 3 0 0 1 6 0v2H9Zm4 7.73V18a1 1 0 1 1-2 0v-1.27a2 2 0 1 1 2 0Z" /></svg>
+              </span>
+            </div>
             <div class="account-form-actions account-desktop-only">
-              <button class="account-save-btn" type="submit">${isVi ? "Lưu thay đổi" : "保存更改"}</button>
-              <button class="account-cancel-btn" type="button" id="cancelAccountPanel">${isVi ? "Hủy bỏ" : "取消"}</button>
+              <button class="account-save-btn" type="submit">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" /><path d="M17 21v-8H7v8" /><path d="M7 3v5h8" /></svg>
+                ${isVi ? "Lưu thay đổi" : "保存更改"}
+              </button>
+              <button class="account-cancel-btn" type="button" id="cancelAccountPanel">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                ${isVi ? "Hủy bỏ" : "取消"}
+              </button>
             </div>
           </form>
+          <div class="account-desktop-widgets account-desktop-only">
+            <section class="account-widget account-email-verify-widget ${emailVerified ? "verified" : ""}">
+              <div>
+                <h3>${isVi ? "Xác minh email" : "Email verification"}</h3>
+                <p>${emailVerified
+                  ? (isVi ? "Email tài khoản đã được xác minh" : "Your account email is verified")
+                  : (isVi ? `Mã xác minh sẽ được gửi tới ${email}` : `A verification code will be sent to ${email}`)}</p>
+              </div>
+              <div class="account-email-verify-form">
+                ${emailVerified ? `
+                  <span class="account-email-verified-badge">${isVi ? "Đã xác minh" : "Verified"}</span>
+                ` : `
+                  <button type="button" class="account-email-open-form-btn" id="accountOpenEmailVerificationBtn">${isVi ? "Xác minh" : "Verify"}</button>
+                  ${state.emailVerificationStatus ? `<small>${escapeHtml(state.emailVerificationStatus)}</small>` : ""}
+                `}
+              </div>
+            </section>
+            ${emailVerified ? `
+              <section class="account-widget account-security-widget">
+                <div>
+                  <h3>${isVi ? "Bảo mật tài khoản" : "Account security"}</h3>
+                  <p>${isVi ? "Mật khẩu đã được bảo vệ" : "Password is protected"}</p>
+                </div>
+                <div class="account-widget-row">
+                  <span>${isVi ? "Đã xác minh email" : "Email verified"}</span>
+                  <button type="button" id="accountDesktopChangePasswordAltBtn">${isVi ? "Đổi mật khẩu" : "Change password"}</button>
+                </div>
+              </section>
+            ` : ""}
+            <section class="account-widget account-notification-widget">
+              <div>
+                <h3>${isVi ? "Tùy chọn thông báo" : "Notification options"}</h3>
+                <p>${isVi ? "Nhắc học mỗi ngày" : "Daily learning reminder"}</p>
+              </div>
+              <label class="account-toggle">
+                <input type="checkbox" id="accountDailyReminderInput" ${dailyReminderEnabled ? "checked" : ""} />
+                <span></span>
+              </label>
+            </section>
+            <section class="account-activity-card">
+              <div class="account-card-heading">
+                <h3>${isVi ? "Hoạt động gần đây" : "Recent activity"}</h3>
+                <button type="button" data-account-activities-all>${isVi ? "Xem tất cả" : "View all"} ›</button>
+              </div>
+              ${renderRecentActivitiesHTML(isVi, updatedLabel)}
+            </section>
+          </div>
           <p class="account-joined-note">${isVi ? `Tham gia từ: ${joinedLabel}` : `加入时间：${joinedLabel}`}</p>
         </section>
 
-        <button type="button" class="account-password-card" id="accountChangePasswordBtn">
+        <button type="button" class="account-password-card" id="accountMobileChangePasswordBtn">
           <span class="account-password-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>
@@ -4228,7 +4881,7 @@ function renderMobilePageReturnBar(activeNav = "") {
   if (activeNav === "hsk" && !state.hskLevelPicker) return "";
   const labels = {
     hsk: state.lang === "vi" ? "Khóa HSK" : "HSK 课程",
-    daily: state.lang === "vi" ? "Giao tiếp" : "交流",
+    daily: t("dailyTabNav"),
     vocab: state.lang === "vi" ? "Bộ từ" : "词库",
     account: state.lang === "vi" ? "Cá nhân" : "个人",
   };
@@ -4239,6 +4892,7 @@ function renderMobilePageReturnBar(activeNav = "") {
           <path d="M15 18l-6-6 6-6" />
         </svg>
       </button>
+      <h1 class="mobile-page-return-title">${escapeHtml(labels[activeNav] || "")}</h1>
     </div>
   `;
 }
@@ -4434,7 +5088,7 @@ function renderHomeMobileModulesHTML(isVi) {
   return `
     <section class="home-mobile-modules" aria-label="${isVi ? "Khóa học nhanh" : "快捷课程"}">
       <div class="home-mobile-modules-grid">
-        <article class="home-mobile-module-card home-mobile-module-card--hsk">
+        <article class="home-mobile-module-card home-mobile-module-card--hsk" data-home-module="hsk" role="button" tabindex="0">
           <img class="home-mobile-module-cover" src="assets/home-module-hsk.png" alt="" />
           <div class="home-mobile-module-content">
             <div class="home-mobile-module-copy">
@@ -4448,7 +5102,7 @@ function renderHomeMobileModulesHTML(isVi) {
           </div>
         </article>
 
-        <article class="home-mobile-module-card home-mobile-module-card--daily">
+        <article class="home-mobile-module-card home-mobile-module-card--daily" data-home-module="daily" role="button" tabindex="0">
           <img class="home-mobile-module-cover" src="assets/home-module-daily.png" alt="" />
           <div class="home-mobile-module-content">
             <div class="home-mobile-module-copy">
@@ -4462,7 +5116,7 @@ function renderHomeMobileModulesHTML(isVi) {
           </div>
         </article>
 
-        <article class="home-mobile-module-card home-mobile-module-card--vocab">
+        <article class="home-mobile-module-card home-mobile-module-card--vocab" data-home-module="vocab" role="button" tabindex="0">
           <img class="home-mobile-module-cover" src="assets/home-module-vocab.png" alt="" />
           <div class="home-mobile-module-content">
             <div class="home-mobile-module-copy">
@@ -4538,6 +5192,55 @@ function renderHomeMobileChallengeHTML(isVi) {
   `;
 }
 
+function renderHomeMobileTopicsHTML(isVi) {
+  const topics = dailyThemes.slice(0, 6);
+  return `
+    <section class="home-mobile-topics-section" aria-label="${isVi ? "Chủ đề" : "主题"}">
+      <div class="home-mobile-topics-head">
+        <h2>${isVi ? "Chủ đề" : "主题"}</h2>
+        <button type="button" class="home-mobile-topics-link" data-home-module="daily">
+          ${isVi ? "Xem tất cả" : "查看全部"} <span aria-hidden="true">›</span>
+        </button>
+      </div>
+      <div class="home-mobile-topics-list">
+        ${topics.map((theme, index) => {
+          const config = getDailyFeaturedThemeConfig(theme);
+          const title = isVi ? config.titleVi : config.titleZh;
+          const zhText = config.zhLabel || theme.zh || title;
+          const pinyin = config.pinyin || "";
+          const itemCount = Array.isArray(theme.items) ? theme.items.length : 0;
+          const minutes = Math.max(2, Math.min(5, Math.ceil(itemCount / 2) + 2));
+          const level = index === 2 ? (isVi ? "Dễ" : "简单") : `HSK ${index % 2 === 0 ? 1 : 2}`;
+          const locked = isDailyThemeLockedForUser(theme.id);
+          return `
+            <article class="home-mobile-topic-card${locked ? " is-locked" : ""}" data-home-topic="${escapeAttr(theme.id)}" role="button" tabindex="0">
+              <span class="home-mobile-topic-index home-mobile-topic-index--${(index % 6) + 1}">${index + 1}</span>
+              <img class="home-mobile-topic-cover" src="${escapeAttr(config.cover)}" alt="" loading="lazy" />
+              <div class="home-mobile-topic-body">
+                <h3>${escapeHtml(title)}</h3>
+                <p class="home-mobile-topic-zh">
+                  <strong>${escapeHtml(zhText)}</strong>
+                  ${pinyin ? `<span>${escapeHtml(pinyin)}</span>` : ""}
+                </p>
+                <div class="home-mobile-topic-meta">
+                  <span class="home-mobile-topic-level">${escapeHtml(level)}</span>
+                  <span class="home-mobile-topic-time">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                    ${minutes} ${isVi ? "phút" : "分钟"}
+                  </span>
+                  <span>${itemCount || 4} ${isVi ? "mục học" : "项"}</span>
+                </div>
+              </div>
+              <button type="button" class="home-mobile-topic-start" data-home-topic="${escapeAttr(theme.id)}">${isVi ? "Vào học" : "开始"}</button>
+              <span class="home-mobile-topic-chevron" aria-hidden="true">›</span>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderHome() {
   const isVi = state.lang === "vi";
   screens.home.innerHTML = `
@@ -4577,6 +5280,7 @@ function renderHome() {
     ${renderHomeMobileModulesHTML(isVi)}
     ${renderHomeMobileSavedVocabHTML(isVi)}
     ${renderHomeMobileChallengeHTML(isVi)}
+    ${renderHomeMobileTopicsHTML(isVi)}
     </div>
   `;
 }
@@ -4601,9 +5305,38 @@ function backToDailyThemeList() {
   renderDailyCourse();
 }
 
-function renderHskLessonListHTML() {
+function handleMobilePageBack() {
+  if (state.screen === "course") {
+    if (state.module === "daily" && state.dailyPendingThemeId) {
+      backToDailyThemeList();
+      scrollAppToTop();
+      return;
+    }
+    if (state.module === "hsk" && !state.hskLevelPicker) {
+      if (state.hskPendingLessonId) {
+        state.hskPendingLessonId = "";
+        state.hskContentType = "";
+        renderHskCourse();
+      } else {
+        backToHskLevelPicker();
+      }
+      scrollAppToTop();
+      return;
+    }
+  }
+
+  navigatePrimaryTab("home");
+}
+
+function renderHskLessonListHTML(options = {}) {
   const isVi = state.lang === "vi";
+  const excludeLessonId = options.excludeLessonId || "";
+  const emptyMessage = options.emptyMessage || (isVi ? "Không tìm thấy bài học nào phù hợp." : "未找到符合的课程。");
   let filteredLessons = hskLevels[state.level].map((lessonItem, index) => ({ lessonItem, index }));
+
+  if (excludeLessonId) {
+    filteredLessons = filteredLessons.filter(({ lessonItem }) => lessonItem.id !== excludeLessonId);
+  }
 
   if (state.hskSearchQuery.trim()) {
     const query = normalizeLatin(state.hskSearchQuery.trim());
@@ -4659,8 +5392,27 @@ function renderHskLessonListHTML() {
     `;
   }).join("") : `
     <div class="hsk-no-results">
-      ${isVi ? "Không tìm thấy bài học nào phù hợp." : "未找到符合的课程。"}
+      ${emptyMessage}
     </div>
+  `;
+}
+
+function renderHskRemainingLessonsHTML(currentLesson) {
+  const isVi = state.lang === "vi";
+  if (!currentLesson) return "";
+  return `
+    <section class="hsk-remaining-lessons">
+      <div class="hsk-remaining-lessons-heading">
+        <h3>${isVi ? "Các bài còn lại" : "其他课程"}</h3>
+        <span>${isVi ? `${state.level} · chọn nhanh bài khác` : `${state.level} · 快速选择其他课程`}</span>
+      </div>
+      <div class="hsk-lessons-list hsk-lessons-list--remaining">
+        ${renderHskLessonListHTML({
+          excludeLessonId: currentLesson.id,
+          emptyMessage: isVi ? "Không còn bài học nào khác trong cấp độ này." : "该等级没有其他课程。",
+        })}
+      </div>
+    </section>
   `;
 }
 
@@ -4806,7 +5558,7 @@ function renderHskCourse() {
 
   setScreenWithDesktopShell("course", `
     <section class="hsk-lesson-screen hsk-lesson-screen--${String(state.level || "").toLowerCase()}">
-      <div class="hsk-lesson-hero">
+      <div class="hsk-lesson-hero ${pendingLesson ? "hsk-lesson-hero--part" : "hsk-lesson-hero--level"}">
         <button class="hsk-lesson-back-btn" ${heroBackAttr} type="button" aria-label="${heroBackLabel}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M15 18l-6-6 6-6" />
@@ -4828,6 +5580,7 @@ function renderHskCourse() {
               <p>${state.level} · ${isVi ? `Bài ${pendingLesson.no}` : `第 ${pendingLesson.no} 课`}</p>
             </div>
             ${renderHskContentTypePickerHTML(pendingLesson)}
+            ${renderHskRemainingLessonsHTML(pendingLesson)}
           </div>
         ` : `
           <div class="hsk-lesson-panel-header">
@@ -5022,24 +5775,62 @@ function renderDailyThemesListHTML() {
   `;
 }
 
+function renderDailyRemainingThemesHTML(currentTheme) {
+  const isVi = state.lang === "vi";
+  const remainingThemes = dailyThemes.filter((theme) => theme.id !== currentTheme?.id);
+  if (!remainingThemes.length) return "";
+  const countLabel = isVi ? "Mục luyện" : "个练习";
+  const cardsHTML = remainingThemes.map((theme) => {
+    const cardMeta = getDailyThemeCardMeta(theme);
+    const isLocked = isDailyThemeLockedForUser(theme.id);
+    const featuredConfig = getDailyFeaturedThemeConfig(theme);
+    return renderDailyFeaturedThemeCardHTML(theme, cardMeta, isLocked, countLabel, isVi, featuredConfig);
+  }).join("");
+  return `
+    <section class="daily-remaining-themes-section">
+      <div class="daily-remaining-themes-heading">
+        <h2>${isVi ? "Các chủ đề còn lại" : "Other topics"}</h2>
+        <span>${isVi ? "Thông dụng · chọn nhanh chủ đề khác" : "Common Chinese · choose another topic"}</span>
+      </div>
+      <div class="daily-theme-grid daily-theme-grid--remaining">
+        ${cardsHTML}
+      </div>
+    </section>
+  `;
+}
+
 function renderDailyCourse() {
   const isVi = state.lang === "vi";
   const pendingTheme = getDailyPendingTheme();
   const pendingThemeConfig = pendingTheme ? getDailyFeaturedThemeConfig(pendingTheme) : null;
+  const dailyHeroTitle = pendingTheme ? (isVi ? pendingTheme.vi : pendingTheme.zh) : "";
+  const dailyHeroBackLabel = isVi ? "Quay lại danh sách chủ đề" : "返回主题列表";
+  const dailyHeroToneClass = pendingThemeConfig?.tone ? ` daily-course-hero--${pendingThemeConfig.tone}` : "";
 
   setScreenWithDesktopShell("course", `
     <section class="daily-course-layout">
       ${pendingTheme ? `
-      <div class="daily-study-screen daily-study-screen--${pendingThemeConfig.tone}">
-        <button class="hsk-back-to-lessons-btn daily-study-back-btn" data-daily-back-themes type="button">${isVi ? "Danh sách chủ đề" : "主题列表"}</button>
-        <div class="hsk-study-part-section daily-study-part-section">
-          <div class="hsk-study-part-heading daily-study-part-heading">
-            <h2>${state.lang === "vi" ? pendingTheme.vi : pendingTheme.zh}</h2>
-            <p>${state.lang === "vi" ? pendingTheme.zh : pendingTheme.vi}</p>
+        <div class="hsk-lesson-hero daily-course-hero daily-course-hero--theme${dailyHeroToneClass}">
+          <button class="hsk-lesson-back-btn daily-course-hero-back-btn" data-daily-back-themes type="button" aria-label="${dailyHeroBackLabel}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </button>
+          <h1>${dailyHeroTitle}</h1>
+          <div class="hsk-lesson-hero-art daily-course-hero-art" aria-hidden="true">
+            <span class="hsk-lesson-art-card">通</span>
+            <span class="hsk-lesson-art-book">用</span>
+            <span class="hsk-lesson-art-pencil"></span>
           </div>
-          ${renderDailyContentTypePickerHTML(pendingTheme)}
         </div>
-      </div>
+      ` : ""}
+      ${pendingTheme ? `
+      <div class="daily-study-screen daily-study-screen--${pendingThemeConfig.tone}">
+          <div class="hsk-study-part-section daily-study-part-section">
+            ${renderDailyContentTypePickerHTML(pendingTheme)}
+            ${renderDailyRemainingThemesHTML(pendingTheme)}
+          </div>
+        </div>
       ` : `
       <header class="daily-course-header">
         <h1>${isVi ? "Tiếng Trung Thông Dụng" : "普通中文"}</h1>
@@ -5735,7 +6526,13 @@ function nextItem() {
   const collection = currentCollection();
   $("#burstLayer").innerHTML = "";
   if (state.index >= collection.items.length - 1) {
+    const wasCompleted = state.completed.has(collection.id);
     state.completed.add(collection.id);
+    if (!wasCompleted) {
+      recordUserActivity("complete", {
+        title: collection.title || "",
+      });
+    }
     saveState();
     renderComplete();
     setScreen("complete");
@@ -5869,10 +6666,15 @@ function bindEvents() {
       state.vocabSearchQuery = event.target.value.trim();
       navigatePrimaryTab("vocab");
     }
-    const homeModuleCard = event.target?.closest?.(".home-desktop-module-card[data-home-module]");
+    const homeModuleCard = event.target?.closest?.(".home-desktop-module-card[data-home-module], .home-mobile-module-card[data-home-module]");
     if (homeModuleCard && (event.key === "Enter" || event.key === " ")) {
       event.preventDefault();
       navigatePrimaryTab(homeModuleCard.dataset.homeModule);
+    }
+    const homeTopicCard = event.target?.closest?.(".home-mobile-topic-card[data-home-topic]");
+    if (homeTopicCard && (event.key === "Enter" || event.key === " ")) {
+      event.preventDefault();
+      openDailyTopicFromHome(homeTopicCard.dataset.homeTopic);
     }
   });
   document.addEventListener("click", (event) => {
@@ -5933,6 +6735,7 @@ function bindEvents() {
       saveState();
       try {
         await persistAccountProfile();
+        recordUserActivity("profile");
         renderChrome();
         renderAccount();
         if (state.screen === "course") renderCourse();
@@ -5973,7 +6776,7 @@ function bindEvents() {
   });
   $("#app").addEventListener("click", (event) => {
     if (event.target.closest("[data-mobile-page-back]")) {
-      navigatePrimaryTab("home");
+      handleMobilePageBack();
       return;
     }
 
@@ -5994,11 +6797,15 @@ function bindEvents() {
       return;
     }
 
-    const accountMobileGlobeBtn = event.target.closest("#accountMobileGlobeBtn");
+    if (event.target.closest("[data-account-activities-all]") && state.screen === "account") {
+      showRecentActivitiesDrawer();
+      return;
+    }
+
     const accountMobileLanguageBtn = event.target.closest("#accountMobileLanguageBtn");
     const homeDesktopLanguageBtn = event.target.closest("#homeDesktopLanguageBtn");
     const homeDesktopTopbarLanguageBtn = event.target.closest("#homeDesktopTopbarLanguageBtn");
-    if (((accountMobileGlobeBtn || accountMobileLanguageBtn) && state.screen === "account") || homeDesktopLanguageBtn || homeDesktopTopbarLanguageBtn) {
+    if ((accountMobileLanguageBtn && state.screen === "account") || homeDesktopLanguageBtn || homeDesktopTopbarLanguageBtn) {
       state.lang = state.lang === "vi" ? "zh" : "vi";
       localStorage.setItem("v2-lang", state.lang);
       saveState();
@@ -6013,9 +6820,34 @@ function bindEvents() {
       return;
     }
 
-    const accountChangePasswordBtn = event.target.closest("#accountChangePasswordBtn");
+    if (event.target.closest("#accountOpenEmailVerificationBtn")) {
+      showEmailVerificationModal();
+      return;
+    }
+
+    if (event.target.closest("#accountSendEmailCodeBtn")) {
+      sendAccountEmailVerificationCode();
+      return;
+    }
+
+    if (event.target.closest("#accountConfirmEmailCodeBtn")) {
+      confirmAccountEmailVerificationCode();
+      return;
+    }
+
+    const accountChangePasswordBtn = event.target.closest("#accountChangePasswordBtn, #accountMobileChangePasswordBtn, #accountDesktopChangePasswordBtn, #accountDesktopChangePasswordAltBtn");
     if (accountChangePasswordBtn) {
-      showToast(state.lang === "vi" ? "Tính năng đổi mật khẩu đang được phát triển" : "修改密码功能开发中");
+      if (state.user?.emailVerified !== true) {
+        state.emailVerificationFormOpen = true;
+        state.emailVerificationStatus = state.lang === "vi"
+          ? "Vui lòng xác minh email trước khi đổi mật khẩu."
+          : "Please verify your email before changing password.";
+        renderAccount();
+        showToast(state.emailVerificationStatus);
+        showEmailVerificationModal();
+        return;
+      }
+      showChangePasswordModal();
       return;
     }
 
@@ -6426,6 +7258,12 @@ function bindEvents() {
       return;
     }
 
+    const homeTopicBtn = event.target.closest("[data-home-topic]");
+    if (homeTopicBtn) {
+      openDailyTopicFromHome(homeTopicBtn.dataset.homeTopic);
+      return;
+    }
+
     const homeModuleBtn = event.target.closest("[data-home-module]");
     if (homeModuleBtn) {
       navigatePrimaryTab(homeModuleBtn.dataset.homeModule);
@@ -6614,10 +7452,15 @@ function bindEvents() {
         btn.innerHTML = `<span>★</span>${t("favorite")}`;
         showToast(state.lang === "vi" ? "Đã hủy lưu từ vựng" : "已取消收藏生词");
       } else {
+        const savedItem = currentItem();
         state.saved.add(hanzi);
         btn.classList.add("saved");
         btn.innerHTML = `<span>★</span>${state.lang === "vi" ? "Đã lưu" : "已收藏"}`;
         playTone("correct");
+        recordUserActivity("save_vocab", {
+          hanzi,
+          meaning: savedItem?.vi || "",
+        });
         showToast(state.lang === "vi" ? "Đã lưu từ vựng thành công" : "生词收藏成功");
       }
       saveState();
@@ -6822,6 +7665,10 @@ function bindEvents() {
     if (event.target.id === "answerInput") {
       handleLiveAnswerInput(event.target.value);
     }
+    if (event.target.id === "accountEmailVerificationCodeInput") {
+      state.emailVerificationCode = event.target.value.replace(/\D/g, "").slice(0, 6);
+      event.target.value = state.emailVerificationCode;
+    }
     if (event.target.id === "hskSearchInput") {
       state.hskSearchQuery = event.target.value;
       const listContainer = $(".hsk-lessons-list");
@@ -6867,6 +7714,31 @@ function bindEvents() {
   $("#app").addEventListener("change", (event) => {
     if (event.target.id === "accountAvatarInput") {
       updateAccountAvatar(event.target.files?.[0], event.target);
+      return;
+    }
+    if (event.target.id === "accountDailyReminderInput") {
+      const checkbox = event.target;
+      const enabled = checkbox.checked;
+      const previous = state.user?.dailyReminderEnabled !== false;
+      if (state.user) {
+        state.user.dailyReminderEnabled = enabled;
+        saveState();
+      }
+      persistDailyReminderSetting(enabled)
+        .then(() => {
+          recordUserActivity(enabled ? "reminder_on" : "reminder_off");
+          showToast(enabled
+            ? (state.lang === "vi" ? "Đã bật nhắc học mỗi ngày" : "Daily reminder enabled")
+            : (state.lang === "vi" ? "Đã tắt nhắc học mỗi ngày" : "Daily reminder disabled"));
+        })
+        .catch((error) => {
+          if (state.user) {
+            state.user.dailyReminderEnabled = previous;
+            saveState();
+          }
+          checkbox.checked = previous;
+          showToast(error.message || (state.lang === "vi" ? "Không thể lưu tùy chọn nhắc học" : "Could not save reminder setting"));
+        });
       return;
     }
     if (event.target.matches?.("[data-admin-content-limit]")) {

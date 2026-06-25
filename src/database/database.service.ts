@@ -57,6 +57,11 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         avatar_url TEXT,
         is_premium BOOLEAN NOT NULL DEFAULT FALSE,
         premium_until TIMESTAMPTZ,
+        daily_reminder_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        daily_reminder_last_sent_on DATE,
+        email_verified_at TIMESTAMPTZ,
+        email_verification_code_hash TEXT,
+        email_verification_expires_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         last_login_at TIMESTAMPTZ
@@ -73,6 +78,21 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     `);
     await this.pool.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_until TIMESTAMPTZ;
+    `);
+    await this.pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_reminder_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+    `);
+    await this.pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_reminder_last_sent_on DATE;
+    `);
+    await this.pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
+    `);
+    await this.pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_code_hash TEXT;
+    `);
+    await this.pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMPTZ;
     `);
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS payment_orders (

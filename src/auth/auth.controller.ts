@@ -37,4 +37,39 @@ export class AuthController {
   ) {
     return this.authService.updateOwnAvatar(id, body, headers);
   }
+
+  @Patch('users/:id/password')
+  async changeOwnPassword(
+    @Param('id') id: string,
+    @Body() body: any,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ) {
+    return this.authService.changeOwnPassword(id, body, headers);
+  }
+
+  @Post('users/:id/email-verification/send')
+  async sendEmailVerificationCode(
+    @Param('id') id: string,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ) {
+    return this.authService.sendEmailVerificationCode(id, headers);
+  }
+
+  @Post('users/:id/email-verification/confirm')
+  async confirmEmailVerificationCode(
+    @Param('id') id: string,
+    @Body() body: any,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ) {
+    return this.authService.confirmEmailVerificationCode(id, body, headers);
+  }
+
+  @Patch('users/:id/reminder-settings')
+  async updateOwnReminderSettings(
+    @Param('id') id: string,
+    @Body() body: any,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ) {
+    return this.authService.updateOwnReminderSettings(id, body, headers);
+  }
 }
