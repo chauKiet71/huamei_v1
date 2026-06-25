@@ -178,9 +178,14 @@ async function ensureSchema() {
         theme_id TEXT PRIMARY KEY,
         title_vi TEXT NOT NULL DEFAULT '',
         sort_order INTEGER NOT NULL DEFAULT 0,
+        free_item_limit INTEGER NOT NULL DEFAULT 0,
         locked_for_free BOOLEAN NOT NULL DEFAULT FALSE,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+    `);
+    await db.query(`
+      ALTER TABLE daily_theme_locks
+      ADD COLUMN IF NOT EXISTS free_item_limit INTEGER NOT NULL DEFAULT 0;
     `);
     await db.query(`
       CREATE TABLE IF NOT EXISTS hsk_level_covers (
@@ -1080,6 +1085,7 @@ function mapDailyThemeLock(row) {
     themeId: row.theme_id,
     titleVi: row.title_vi,
     sortOrder: Number(row.sort_order),
+    freeItemLimit: Math.max(0, Number(row.free_item_limit || 0)),
     lockedForFree: row.locked_for_free,
     updatedAt: row.updated_at,
   };
@@ -1087,15 +1093,26 @@ function mapDailyThemeLock(row) {
 
 async function getPublicDailyLocks() {
   const result = await query(
-    `SELECT theme_id FROM daily_theme_locks WHERE locked_for_free = TRUE`,
+    `SELECT theme_id, free_item_limit, locked_for_free
+     FROM daily_theme_locks
+     WHERE locked_for_free = TRUE OR free_item_limit > 0
+     ORDER BY theme_id ASC`,
   );
-  return json({ lockedThemeIds: result.rows.map((row) => row.theme_id) });
+  const themeLocks = result.rows.map((row) => ({
+    themeId: row.theme_id,
+    freeItemLimit: Math.max(0, Number(row.free_item_limit || 0)),
+    lockedForFree: row.locked_for_free === true,
+  }));
+  const lockedThemeIds = themeLocks
+    .filter((item) => item.lockedForFree && Number(item.freeItemLimit || 0) <= 0)
+    .map((item) => item.themeId);
+  return json({ lockedThemeIds, themeLocks });
 }
 
 async function listAdminDailyLocks(req) {
   await assertAdmin(req);
   const result = await query(
-    `SELECT theme_id, title_vi, sort_order, locked_for_free, updated_at
+    `SELECT theme_id, title_vi, sort_order, free_item_limit, locked_for_free, updated_at
      FROM daily_theme_locks
      ORDER BY sort_order ASC, theme_id ASC`,
   );
@@ -1114,17 +1131,19 @@ async function saveAdminDailyLocks(req, body) {
       const themeId = String(theme.themeId || "").trim();
       const titleVi = String(theme.titleVi || "").trim();
       const sortOrder = Number(theme.sortOrder || 0);
+      const freeItemLimit = Math.max(0, Number(theme.freeItemLimit || 0));
       const lockedForFree = theme.lockedForFree === true;
       if (!themeId) continue;
       await client.query(
-        `INSERT INTO daily_theme_locks (theme_id, title_vi, sort_order, locked_for_free, updated_at)
-         VALUES ($1, $2, $3, $4, NOW())
+        `INSERT INTO daily_theme_locks (theme_id, title_vi, sort_order, free_item_limit, locked_for_free, updated_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
          ON CONFLICT (theme_id) DO UPDATE
          SET title_vi = EXCLUDED.title_vi,
              sort_order = EXCLUDED.sort_order,
+             free_item_limit = EXCLUDED.free_item_limit,
              locked_for_free = EXCLUDED.locked_for_free,
              updated_at = NOW()`,
-        [themeId, titleVi, sortOrder, lockedForFree],
+        [themeId, titleVi, sortOrder, freeItemLimit, lockedForFree],
       );
     }
     await client.query("COMMIT");
@@ -1136,7 +1155,7 @@ async function saveAdminDailyLocks(req, body) {
   }
 
   const result = await query(
-    `SELECT theme_id, title_vi, sort_order, locked_for_free, updated_at
+    `SELECT theme_id, title_vi, sort_order, free_item_limit, locked_for_free, updated_at
      FROM daily_theme_locks
      ORDER BY sort_order ASC, theme_id ASC`,
   );
